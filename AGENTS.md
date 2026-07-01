@@ -104,6 +104,30 @@
 - 业务规则放在可测试模块中。
 - 禁止用 `any` 或无类型对象逃避设计。
 
+## 工程入口
+
+本地开发入口：
+
+- `python .\start_dev.py`：启动 Docker MySQL/Redis、Java 后端、Vue 前端，并打开浏览器。
+- `python .\start_dev.py --reset`：清空本项目 Docker 数据库后启动。
+- `python .\stop_dev.py`：停止本项目本地服务。
+
+本地测试入口：
+
+- `python .\start_test.py`：运行常规验证，不打开浏览器。
+- `python .\start_browser_test.py`：重置本项目 Docker 数据库，启动真实后端和前端，运行有头 Chromium 浏览器验收。
+- `python .\stop_test.py`：停止测试相关服务。
+
+底层脚本：
+
+- `scripts/verify.ps1`：Python 脚本编译、后端测试、前端类型检查、前端单元测试、前端构建、Docker Compose 配置和文档扫描。
+- `scripts/run-e2e-stack.ps1`：真实浏览器验收的服务栈启动脚本，只负责启动并维持 Docker、后端和前端生命周期。
+
+本地种子账号：
+
+- 账号：`admin`
+- 密码：`password`
+
 ## 验证规则
 
 - 文档任务必须检查目标文件是否存在。
