@@ -1,11 +1,12 @@
 ﻿import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchCurrentUser, login, logout } from '@/api/auth'
+import { changePassword, fetchCurrentUser, login, logout } from '@/api/auth'
 import { useAuthStore } from './auth'
 
 vi.mock('@/api/auth', () => ({
   login: vi.fn(),
+  changePassword: vi.fn(),
   fetchCurrentUser: vi.fn(),
   logout: vi.fn(),
 }))
@@ -14,6 +15,7 @@ const currentUser = {
   id: 1,
   username: 'admin',
   displayName: '系统管理员',
+  mustChangePassword: false,
   roles: ['ADMIN'],
   permissions: ['system:admin'],
 }
@@ -22,6 +24,7 @@ describe('auth store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.mocked(login).mockReset()
+    vi.mocked(changePassword).mockReset()
     vi.mocked(fetchCurrentUser).mockReset()
     vi.mocked(logout).mockReset()
   })
@@ -66,6 +69,19 @@ describe('auth store', () => {
     expect(store.user).toBeNull()
     expect(localStorage.getItem('kaoshi.accessToken')).toBeNull()
     expect(localStorage.getItem('kaoshi.currentUser')).toBeNull()
+  })
+
+  it('refreshes current user after changing password', async () => {
+    vi.mocked(changePassword).mockResolvedValue(undefined)
+    vi.mocked(fetchCurrentUser).mockResolvedValue(currentUser)
+
+    const store = useAuthStore()
+    store.token = 'access-token'
+    await store.changePassword({ currentPassword: '123456', newPassword: 'abcdef', confirmPassword: 'abcdef' })
+
+    expect(changePassword).toHaveBeenCalledWith({ currentPassword: '123456', newPassword: 'abcdef', confirmPassword: 'abcdef' })
+    expect(fetchCurrentUser).toHaveBeenCalledOnce()
+    expect(store.user).toEqual(currentUser)
   })
 })
 

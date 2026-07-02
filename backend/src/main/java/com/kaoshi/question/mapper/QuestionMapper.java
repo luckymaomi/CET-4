@@ -46,6 +46,9 @@ public interface QuestionMapper {
     @Select("select name from question_banks where id = #{id}")
     String findBankName(@Param("id") Long id);
 
+    @Select("select name from question_banks where status = 'ACTIVE' order by id")
+    List<String> findActiveBankNames();
+
     @Select("select id from question_banks where name = #{name}")
     Long findBankIdByName(@Param("name") String name);
 

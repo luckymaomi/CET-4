@@ -6,9 +6,8 @@ import java.util.List;
 
 public record ExamResponse(
         Long id,
-        Long paperId,
-        String paperName,
         BigDecimal totalScore,
+        Integer questionCount,
         String title,
         String description,
         BigDecimal qualifyScore,
@@ -18,8 +17,10 @@ public record ExamResponse(
         Boolean timeLimit,
         Integer attemptLimit,
         String displayMode,
+        String questionOrderMode,
         String openType,
         List<Long> departmentIds,
+        List<ExamRuleResponse> rules,
         String status
 ) {
 }

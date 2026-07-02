@@ -74,43 +74,7 @@ export interface Question {
   attachments: QuestionAttachment[]
 }
 
-export interface PaperQuestionPayload {
-  questionId: number
-  score: number
-}
-
-export interface PaperQuestion {
-  id: number
-  questionId: number
-  questionType: QuestionPayload['type']
-  stem: string
-  score: number
-  sortOrder: number
-}
-
-export interface PaperPayload {
-  categoryId: number
-  name: string
-  description: string
-  durationMinutes: number
-  status: 'ACTIVE' | 'DISABLED'
-  questions: PaperQuestionPayload[]
-}
-
-export interface Paper {
-  id: number
-  categoryId: number
-  categoryName: string
-  name: string
-  description: string | null
-  totalScore: number
-  durationMinutes: number
-  status: PaperPayload['status']
-  questions: PaperQuestion[]
-}
-
 export interface ExamPayload {
-  paperId: number
   title: string
   description: string
   qualifyScore: number
@@ -120,16 +84,30 @@ export interface ExamPayload {
   timeLimit: boolean
   attemptLimit: number | null
   displayMode: 'PAGED' | 'ALL'
+  questionOrderMode: 'FIXED' | 'RANDOM'
   openType: 'PUBLIC' | 'DEPARTMENT'
   departmentIds: number[]
-  status: 'DRAFT' | 'PUBLISHED' | 'CLOSED'
+  rules: ExamRulePayload[]
+}
+
+export interface ExamRulePayload {
+  bankId: number
+  singleCount: number
+  singleScore: number
+  multipleCount: number
+  multipleScore: number
+}
+
+export interface ExamRule extends ExamRulePayload {
+  id: number
+  bankName: string
+  sortOrder: number
 }
 
 export interface Exam {
   id: number
-  paperId: number
-  paperName: string
   totalScore: number
+  questionCount: number
   title: string
   description: string | null
   qualifyScore: number
@@ -139,9 +117,11 @@ export interface Exam {
   timeLimit: boolean
   attemptLimit: number | null
   displayMode: ExamPayload['displayMode']
+  questionOrderMode: ExamPayload['questionOrderMode']
   openType: ExamPayload['openType']
   departmentIds: number[]
-  status: ExamPayload['status']
+  rules: ExamRule[]
+  status: 'DRAFT' | 'PUBLISHED' | 'CLOSED'
 }
 
 export interface ExamQuestionOption {
@@ -256,6 +236,11 @@ export async function importQuestions(file: File): Promise<ExcelImportResult> {
   return response.data.data
 }
 
+export async function downloadQuestionExport(): Promise<Blob> {
+  const response = await apiClient.get('/api/admin/questions/export', { responseType: 'blob' })
+  return response.data
+}
+
 export async function uploadFile(file: File): Promise<QuestionAttachmentPayload> {
   const form = new FormData()
   form.append('file', file)
@@ -263,28 +248,13 @@ export async function uploadFile(file: File): Promise<QuestionAttachmentPayload>
   return response.data.data
 }
 
-export async function fetchPaperCategories(): Promise<NamedCategory[]> {
-  const response = await apiClient.get<ApiResponse<NamedCategory[]>>('/api/admin/papers/categories')
-  return response.data.data
-}
-
-export async function fetchPapers(params: { page: number; size: number; keyword?: string }): Promise<PageResult<Paper>> {
-  const response = await apiClient.get<ApiResponse<PageResult<Paper>>>('/api/admin/papers', { params })
-  return response.data.data
-}
-
-export async function createPaper(payload: PaperPayload): Promise<Paper> {
-  const response = await apiClient.post<ApiResponse<Paper>>('/api/admin/papers', payload)
-  return response.data.data
-}
-
-export async function updatePaper(id: number, payload: PaperPayload): Promise<Paper> {
-  const response = await apiClient.put<ApiResponse<Paper>>(`/api/admin/papers/${id}`, payload)
-  return response.data.data
-}
-
 export async function fetchAdminExams(params: { page: number; size: number; keyword?: string }): Promise<PageResult<Exam>> {
   const response = await apiClient.get<ApiResponse<PageResult<Exam>>>('/api/admin/exams', { params })
+  return response.data.data
+}
+
+export async function fetchAdminExamDetail(id: number): Promise<Exam> {
+  const response = await apiClient.get<ApiResponse<Exam>>(`/api/admin/exams/${id}`)
   return response.data.data
 }
 
@@ -295,6 +265,16 @@ export async function createExam(payload: ExamPayload): Promise<Exam> {
 
 export async function updateExam(id: number, payload: ExamPayload): Promise<Exam> {
   const response = await apiClient.put<ApiResponse<Exam>>(`/api/admin/exams/${id}`, payload)
+  return response.data.data
+}
+
+export async function publishExam(id: number): Promise<Exam> {
+  const response = await apiClient.post<ApiResponse<Exam>>(`/api/admin/exams/${id}/publish`)
+  return response.data.data
+}
+
+export async function closeExam(id: number): Promise<Exam> {
+  const response = await apiClient.post<ApiResponse<Exam>>(`/api/admin/exams/${id}/close`)
   return response.data.data
 }
 

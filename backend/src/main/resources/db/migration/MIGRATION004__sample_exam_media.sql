@@ -16,10 +16,26 @@ values
   (4, 'practice-chart.png', '/local-assets/practice-chart.png', 'IMAGE', 10),
   (4, 'dog-wolf-friendship.mp3', '/local-assets/dog-wolf-friendship.mp3', 'AUDIO', 20);
 
-insert into paper_questions (paper_id, question_id, score, sort_order)
-values (1, 4, 5.00, 40);
+update exam_rules
+set multiple_count = 2
+where exam_id = 1 and bank_id = 1;
 
-update papers
-set total_score = 20.00,
+update exams
+set qualify_score = 12.00,
     updated_at = current_timestamp
 where id = 1;
+
+insert into exam_published_questions (id, exam_id, source_question_id, type, stem, analysis, score, sort_order)
+values (4, 1, 4, 'MULTIPLE_CHOICE', 'Look at the chart and choose the correct statements.', 'The chart highlights daily reading and listening practice.', 5.00, 40);
+
+insert into exam_published_options (published_question_id, option_label, content, is_correct, sort_order)
+select epq.id, qo.option_label, qo.content, qo.is_correct, qo.sort_order
+from exam_published_questions epq
+join question_options qo on qo.question_id = epq.source_question_id
+where epq.source_question_id = 4;
+
+insert into exam_published_attachments (published_question_id, file_name, file_url, media_type, sort_order)
+select epq.id, qa.file_name, qa.file_url, qa.media_type, qa.sort_order
+from exam_published_questions epq
+join question_attachments qa on qa.question_id = epq.source_question_id
+where epq.source_question_id in (2, 3, 4);

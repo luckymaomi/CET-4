@@ -33,6 +33,7 @@ public class AuthUserService implements UserDetailsService {
                 user.getDisplayName(),
                 user.getPasswordHash(),
                 user.getStatus(),
+                Boolean.TRUE.equals(user.getMustChangePassword()),
                 roles,
                 permissions,
                 authorities

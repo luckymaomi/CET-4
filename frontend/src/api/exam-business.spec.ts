@@ -3,19 +3,21 @@ import { describe, expect, it, vi } from 'vitest'
 import { apiClient } from './client'
 import {
   createExam,
-  createPaper,
   createQuestion,
   createQuestionBank,
+  closeExam,
+  downloadQuestionExport,
   downloadQuestionImportTemplate,
+  fetchAdminExamDetail,
   fetchAdminResultDetail,
   fetchAdminResults,
   fetchExamTasks,
   fetchMyExamResultDetail,
   fetchMyExamResults,
-  fetchPapers,
   fetchQuestionBanks,
   fetchQuestionDetail,
   importQuestions,
+  publishExam,
   startExam,
   submitExam,
   uploadFile,
@@ -36,12 +38,10 @@ describe('exam business api', () => {
     vi.mocked(apiClient.get).mockResolvedValue(ok({ records: [], total: 0, page: 1, size: 20 }))
 
     await fetchQuestionBanks({ page: 1, size: 20, keyword: 'english' })
-    await fetchPapers({ page: 1, size: 20 })
 
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/question-banks', {
       params: { page: 1, size: 20, keyword: 'english' },
     })
-    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/papers', { params: { page: 1, size: 20 } })
   })
 
   it('writes question paper and exam payloads', async () => {
@@ -61,16 +61,7 @@ describe('exam business api', () => {
       ],
       attachments: [{ fileName: 'chart.png', fileUrl: 'https://example.com/chart.png', mediaType: 'IMAGE' }],
     })
-    await createPaper({
-      categoryId: 1,
-      name: 'paper',
-      description: '',
-      durationMinutes: 30,
-      status: 'ACTIVE',
-      questions: [{ questionId: 1, score: 5 }],
-    })
     await createExam({
-      paperId: 1,
       title: 'exam',
       description: '',
       qualifyScore: 3,
@@ -80,10 +71,14 @@ describe('exam business api', () => {
       timeLimit: true,
       attemptLimit: null,
       displayMode: 'PAGED',
+      questionOrderMode: 'FIXED',
       openType: 'PUBLIC',
       departmentIds: [],
-      status: 'PUBLISHED',
+      rules: [{ bankId: 1, singleCount: 1, singleScore: 5, multipleCount: 0, multipleScore: 0 }],
     })
+    await fetchAdminExamDetail(1)
+    await publishExam(1)
+    await closeExam(1)
 
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/question-banks', {
       categoryId: 1,
@@ -105,7 +100,6 @@ describe('exam business api', () => {
       attachments: [{ fileName: 'chart.png', fileUrl: 'https://example.com/chart.png', mediaType: 'IMAGE' }],
     })
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/exams', {
-      paperId: 1,
       title: 'exam',
       description: '',
       qualifyScore: 3,
@@ -115,10 +109,14 @@ describe('exam business api', () => {
       timeLimit: true,
       attemptLimit: null,
       displayMode: 'PAGED',
+      questionOrderMode: 'FIXED',
       openType: 'PUBLIC',
       departmentIds: [],
-      status: 'PUBLISHED',
+      rules: [{ bankId: 1, singleCount: 1, singleScore: 5, multipleCount: 0, multipleScore: 0 }],
     })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/exams/1')
+    expect(apiClient.post).toHaveBeenCalledWith('/api/admin/exams/1/publish')
+    expect(apiClient.post).toHaveBeenCalledWith('/api/admin/exams/1/close')
   })
 
   it('uses exam portal endpoints for task start submit and results', async () => {
@@ -150,11 +148,13 @@ describe('exam business api', () => {
 
     await fetchQuestionDetail(8)
     await downloadQuestionImportTemplate()
+    await downloadQuestionExport()
     await importQuestions(new File(['xlsx'], 'questions.xlsx'))
     await uploadFile(new File(['audio'], 'listening.mp3'))
 
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/questions/8')
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/questions/import-template', { responseType: 'blob' })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/questions/export', { responseType: 'blob' })
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/questions/import', expect.any(FormData))
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/files', expect.any(FormData))
   })

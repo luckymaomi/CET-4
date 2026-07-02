@@ -49,5 +49,15 @@ public class AdminExamController {
     public ApiResponse<ExamResponse> update(@PathVariable Long id, @Valid @RequestBody ExamSaveRequest request) {
         return ApiResponse.ok(examService.update(id, request));
     }
+
+    @PostMapping("/{id}/publish")
+    public ApiResponse<ExamResponse> publish(@PathVariable Long id) {
+        return ApiResponse.ok(examService.publish(id));
+    }
+
+    @PostMapping("/{id}/close")
+    public ApiResponse<ExamResponse> close(@PathVariable Long id) {
+        return ApiResponse.ok(examService.close(id));
+    }
 }
 

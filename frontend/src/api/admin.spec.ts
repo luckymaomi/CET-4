@@ -6,13 +6,14 @@ import {
   createAdminUser,
   createDepartment,
   deleteDepartment,
-  downloadDepartmentImportTemplate,
+  downloadUserExport,
+  downloadUserImportTemplate,
   fetchAdminMenus,
   fetchAdminPermissions,
   fetchAdminRoles,
   fetchAdminUsers,
   fetchDepartments,
-  importDepartments,
+  importUsers,
   updateDepartment,
   updateAdminRole,
   updateAdminUser,
@@ -46,10 +47,14 @@ describe('admin api', () => {
     vi.mocked(apiClient.post).mockResolvedValue(ok({}))
     vi.mocked(apiClient.put).mockResolvedValue(ok({}))
     vi.mocked(apiClient.patch).mockResolvedValue(ok({}))
+    vi.mocked(apiClient.get).mockResolvedValue(ok({}))
 
-    await createAdminUser({ departmentId: 1, username: 'teacher', displayName: '老师', password: 'password', roleIds: [2] })
+    await createAdminUser({ departmentId: 1, username: 'teacher', displayName: '老师', roleIds: [2] })
     await updateAdminUser(2, { departmentId: 2, displayName: '主管', roleIds: [2, 3] })
     await changeAdminUserStatus(2, 'DISABLED')
+    await downloadUserImportTemplate()
+    await importUsers(new File(['xlsx'], 'users.xlsx'))
+    await downloadUserExport()
     await createAdminRole({ code: 'AUDITOR', name: '审计员', description: '', permissionIds: [1], menuIds: [1] })
     await updateAdminRole(4, { code: 'AUDITOR', name: '审计管理员', description: '', permissionIds: [1], menuIds: [1, 2] })
 
@@ -57,11 +62,13 @@ describe('admin api', () => {
       departmentId: 1,
       username: 'teacher',
       displayName: '老师',
-      password: 'password',
       roleIds: [2],
     })
     expect(apiClient.put).toHaveBeenCalledWith('/api/admin/users/2', { departmentId: 2, displayName: '主管', roleIds: [2, 3] })
     expect(apiClient.patch).toHaveBeenCalledWith('/api/admin/users/2/status', { status: 'DISABLED' })
+    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/users/import-template', { responseType: 'blob' })
+    expect(apiClient.post).toHaveBeenCalledWith('/api/admin/users/import', expect.any(FormData))
+    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/users/export', { responseType: 'blob' })
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/roles', {
       code: 'AUDITOR',
       name: '审计员',
@@ -90,7 +97,7 @@ describe('admin api', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/menus')
   })
 
-  it('uses department tree crud template and import endpoints', async () => {
+  it('uses department tree crud endpoints', async () => {
     vi.mocked(apiClient.get).mockResolvedValue(ok([]))
     vi.mocked(apiClient.post).mockResolvedValue(ok({}))
     vi.mocked(apiClient.put).mockResolvedValue(ok({}))
@@ -100,8 +107,6 @@ describe('admin api', () => {
     await createDepartment({ parentId: null, name: '部门', code: 'DEPT', description: '', status: 'ACTIVE' })
     await updateDepartment(2, { parentId: 1, name: '部门', code: 'DEPT', description: '', status: 'DISABLED' })
     await deleteDepartment(2)
-    await downloadDepartmentImportTemplate()
-    await importDepartments(new File(['xlsx'], 'departments.xlsx'))
 
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/departments')
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/departments', {
@@ -119,7 +124,5 @@ describe('admin api', () => {
       status: 'DISABLED',
     })
     expect(apiClient.delete).toHaveBeenCalledWith('/api/admin/departments/2')
-    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/departments/import-template', { responseType: 'blob' })
-    expect(apiClient.post).toHaveBeenCalledWith('/api/admin/departments/import', expect.any(FormData))
   })
 })

@@ -96,6 +96,12 @@ const routes: RouteRecordRaw[] = [
     meta: { public: true, title: '登录' },
   },
   {
+    path: '/change-password',
+    name: 'change-password',
+    component: () => import('@/views/auth/ChangePasswordView.vue'),
+    meta: { title: '修改密码' },
+  },
+  {
     path: '/403',
     name: 'forbidden',
     component: () => import('@/views/error/ForbiddenView.vue'),
@@ -119,6 +125,9 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (to.meta.public) {
     if (to.name === 'login' && auth.isAuthenticated) {
+      if (auth.user?.mustChangePassword) {
+        return { name: 'change-password' }
+      }
       return { name: 'admin-dashboard' }
     }
     return true
@@ -128,6 +137,12 @@ router.beforeEach(async (to) => {
   }
   if (!auth.user) {
     await auth.loadCurrentUser()
+  }
+  if (auth.user?.mustChangePassword && to.name !== 'change-password') {
+    return { name: 'change-password' }
+  }
+  if (!auth.user?.mustChangePassword && to.name === 'change-password') {
+    return { name: 'admin-dashboard' }
   }
   return true
 })

@@ -67,5 +67,10 @@ public class QuestionController {
     public ApiResponse<ExcelImportResult> importExcel(@RequestPart("file") MultipartFile file) {
         return ApiResponse.ok(questionService.importExcel(file));
     }
+
+    @GetMapping("/export")
+    public ResponseEntity<byte[]> exportExcel() {
+        return questionService.exportExcel();
+    }
 }
 

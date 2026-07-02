@@ -24,14 +24,12 @@ export interface UserCreatePayload {
   departmentId: number | null
   username: string
   displayName: string
-  password: string
   roleIds: number[]
 }
 
 export interface UserUpdatePayload {
   departmentId: number | null
   displayName: string
-  password?: string
   roleIds: number[]
 }
 
@@ -117,6 +115,23 @@ export async function changeAdminUserStatus(id: number, status: AdminUser['statu
   return response.data.data
 }
 
+export async function downloadUserImportTemplate(): Promise<Blob> {
+  const response = await apiClient.get('/api/admin/users/import-template', { responseType: 'blob' })
+  return response.data
+}
+
+export async function importUsers(file: File): Promise<ExcelImportResult> {
+  const form = new FormData()
+  form.append('file', file)
+  const response = await apiClient.post<ApiResponse<ExcelImportResult>>('/api/admin/users/import', form)
+  return response.data.data
+}
+
+export async function downloadUserExport(): Promise<Blob> {
+  const response = await apiClient.get('/api/admin/users/export', { responseType: 'blob' })
+  return response.data
+}
+
 export async function fetchAdminRoles(): Promise<AdminRole[]> {
   const response = await apiClient.get<ApiResponse<AdminRole[]>>('/api/admin/roles')
   return response.data.data
@@ -159,16 +174,4 @@ export async function updateDepartment(id: number, payload: DepartmentPayload): 
 
 export async function deleteDepartment(id: number): Promise<void> {
   await apiClient.delete<ApiResponse<void>>(`/api/admin/departments/${id}`)
-}
-
-export async function downloadDepartmentImportTemplate(): Promise<Blob> {
-  const response = await apiClient.get('/api/admin/departments/import-template', { responseType: 'blob' })
-  return response.data
-}
-
-export async function importDepartments(file: File): Promise<ExcelImportResult> {
-  const form = new FormData()
-  form.append('file', file)
-  const response = await apiClient.post<ApiResponse<ExcelImportResult>>('/api/admin/departments/import', form)
-  return response.data.data
 }

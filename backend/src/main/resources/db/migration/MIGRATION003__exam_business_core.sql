@@ -62,47 +62,8 @@ create table question_attachments (
   index idx_question_attachments_question (question_id)
 );
 
-create table paper_categories (
-  id bigint primary key auto_increment,
-  name varchar(64) not null,
-  description varchar(255) null,
-  sort_order int not null default 0,
-  created_at datetime not null default current_timestamp,
-  updated_at datetime not null default current_timestamp on update current_timestamp,
-  constraint uk_paper_categories_name unique (name)
-);
-
-create table papers (
-  id bigint primary key auto_increment,
-  category_id bigint not null,
-  name varchar(128) not null,
-  description varchar(500) null,
-  total_score decimal(7,2) not null default 0,
-  duration_minutes int not null,
-  status varchar(20) not null,
-  created_at datetime not null default current_timestamp,
-  updated_at datetime not null default current_timestamp on update current_timestamp,
-  constraint fk_papers_category foreign key (category_id) references paper_categories (id),
-  index idx_papers_category (category_id),
-  index idx_papers_status (status)
-);
-
-create table paper_questions (
-  id bigint primary key auto_increment,
-  paper_id bigint not null,
-  question_id bigint not null,
-  score decimal(6,2) not null,
-  sort_order int not null,
-  created_at datetime not null default current_timestamp,
-  constraint fk_paper_questions_paper foreign key (paper_id) references papers (id),
-  constraint fk_paper_questions_question foreign key (question_id) references questions (id),
-  constraint uk_paper_questions_question unique (paper_id, question_id),
-  index idx_paper_questions_paper (paper_id)
-);
-
 create table exams (
   id bigint primary key auto_increment,
-  paper_id bigint not null,
   title varchar(128) not null,
   description varchar(500) null,
   qualify_score decimal(7,2) not null default 0,
@@ -112,14 +73,67 @@ create table exams (
   time_limit bit not null default true,
   attempt_limit int null,
   display_mode varchar(20) not null default 'PAGED',
+  question_order_mode varchar(20) not null default 'FIXED',
   open_type varchar(20) not null default 'PUBLIC',
   status varchar(20) not null,
   created_at datetime not null default current_timestamp,
   updated_at datetime not null default current_timestamp on update current_timestamp,
-  constraint fk_exams_paper foreign key (paper_id) references papers (id),
-  index idx_exams_paper (paper_id),
   index idx_exams_status (status),
   index idx_exams_time (start_time, end_time)
+);
+
+create table exam_rules (
+  id bigint primary key auto_increment,
+  exam_id bigint not null,
+  bank_id bigint not null,
+  single_count int not null default 0,
+  single_score decimal(6,2) not null default 0,
+  multiple_count int not null default 0,
+  multiple_score decimal(6,2) not null default 0,
+  sort_order int not null,
+  created_at datetime not null default current_timestamp,
+  constraint fk_exam_rules_exam foreign key (exam_id) references exams (id),
+  constraint fk_exam_rules_bank foreign key (bank_id) references question_banks (id),
+  constraint uk_exam_rules_bank unique (exam_id, bank_id),
+  index idx_exam_rules_exam (exam_id)
+);
+
+create table exam_published_questions (
+  id bigint primary key auto_increment,
+  exam_id bigint not null,
+  source_question_id bigint not null,
+  type varchar(32) not null,
+  stem text not null,
+  analysis text null,
+  score decimal(6,2) not null,
+  sort_order int not null,
+  created_at datetime not null default current_timestamp,
+  constraint fk_exam_published_questions_exam foreign key (exam_id) references exams (id),
+  index idx_exam_published_questions_exam (exam_id)
+);
+
+create table exam_published_options (
+  id bigint primary key auto_increment,
+  published_question_id bigint not null,
+  option_label varchar(8) not null,
+  content text not null,
+  is_correct bit not null,
+  sort_order int not null,
+  created_at datetime not null default current_timestamp,
+  constraint fk_exam_published_options_question foreign key (published_question_id) references exam_published_questions (id),
+  index idx_exam_published_options_question (published_question_id)
+);
+
+create table exam_published_attachments (
+  id bigint primary key auto_increment,
+  published_question_id bigint not null,
+  file_name varchar(255) not null,
+  file_url varchar(1000) not null,
+  media_type varchar(32) not null,
+  sort_order int not null,
+  created_at datetime not null default current_timestamp,
+  constraint fk_exam_published_attachments_question foreign key (published_question_id) references exam_published_questions (id),
+  index idx_exam_published_attachments_question (published_question_id)
 );
 
 create table exam_departments (
@@ -150,18 +164,58 @@ create table exam_attempts (
   index idx_exam_attempts_status (status)
 );
 
+create table exam_attempt_questions (
+  id bigint primary key auto_increment,
+  attempt_id bigint not null,
+  published_question_id bigint not null,
+  source_question_id bigint not null,
+  type varchar(32) not null,
+  stem text not null,
+  analysis text null,
+  score decimal(6,2) not null,
+  sort_order int not null,
+  display_order int not null,
+  created_at datetime not null default current_timestamp,
+  constraint fk_exam_attempt_questions_attempt foreign key (attempt_id) references exam_attempts (id),
+  index idx_exam_attempt_questions_attempt (attempt_id)
+);
+
+create table exam_attempt_options (
+  id bigint primary key auto_increment,
+  attempt_question_id bigint not null,
+  option_label varchar(8) not null,
+  content text not null,
+  is_correct bit not null,
+  sort_order int not null,
+  created_at datetime not null default current_timestamp,
+  constraint fk_exam_attempt_options_question foreign key (attempt_question_id) references exam_attempt_questions (id),
+  index idx_exam_attempt_options_question (attempt_question_id)
+);
+
+create table exam_attempt_attachments (
+  id bigint primary key auto_increment,
+  attempt_question_id bigint not null,
+  file_name varchar(255) not null,
+  file_url varchar(1000) not null,
+  media_type varchar(32) not null,
+  sort_order int not null,
+  created_at datetime not null default current_timestamp,
+  constraint fk_exam_attempt_attachments_question foreign key (attempt_question_id) references exam_attempt_questions (id),
+  index idx_exam_attempt_attachments_question (attempt_question_id)
+);
+
 create table exam_answers (
   id bigint primary key auto_increment,
   attempt_id bigint not null,
-  question_id bigint not null,
+  attempt_question_id bigint not null,
   selected_labels varchar(255) not null,
   is_correct bit not null,
   score decimal(6,2) not null default 0,
   created_at datetime not null default current_timestamp,
   updated_at datetime not null default current_timestamp on update current_timestamp,
   constraint fk_exam_answers_attempt foreign key (attempt_id) references exam_attempts (id),
-  constraint fk_exam_answers_question foreign key (question_id) references questions (id),
-  constraint uk_exam_answers_question unique (attempt_id, question_id),
+  constraint fk_exam_answers_question foreign key (attempt_question_id) references exam_attempt_questions (id),
+  constraint uk_exam_answers_question unique (attempt_question_id),
   index idx_exam_answers_attempt (attempt_id)
 );
 
@@ -214,20 +268,27 @@ values
 insert into question_attachments (question_id, file_name, file_url, media_type, sort_order)
 values (1, 'dog-wolf-friendship.mp3', '/local-assets/dog-wolf-friendship.mp3', 'AUDIO', 10);
 
-insert into paper_categories (id, name, description, sort_order)
-values (1, '默认试卷分类', '系统初始化试卷分类', 10);
+insert into exams (id, title, description, qualify_score, start_time, end_time, duration_minutes, time_limit, attempt_limit, display_mode, question_order_mode, open_type, status)
+values (1, '英语基础模拟考试', '系统初始化考试，用于验证考试端作答闭环', 9.00, '2026-01-01 00:00:00', '2026-12-31 23:59:59', 30, true, null, 'PAGED', 'FIXED', 'PUBLIC', 'PUBLISHED');
 
-insert into papers (id, category_id, name, description, total_score, duration_minutes, status)
-values (1, 1, '英语基础测试卷', '系统初始化试卷，用于验证考试发布和作答', 15.00, 30, 'ACTIVE');
+insert into exam_rules (exam_id, bank_id, single_count, single_score, multiple_count, multiple_score, sort_order)
+values (1, 1, 2, 5.00, 1, 5.00, 10);
 
-insert into paper_questions (paper_id, question_id, score, sort_order)
+insert into exam_published_questions (id, exam_id, source_question_id, type, stem, analysis, score, sort_order)
 values
-  (1, 1, 5.00, 10),
-  (1, 2, 5.00, 20),
-  (1, 3, 5.00, 30);
+  (1, 1, 1, 'SINGLE_CHOICE', 'Choose the correct sentence.', 'Subject and verb agreement: He goes to school every day.', 5.00, 10),
+  (2, 1, 3, 'SINGLE_CHOICE', 'Which option means “提高”?', 'Improve means 提高.', 5.00, 20),
+  (3, 1, 2, 'MULTIPLE_CHOICE', 'Which words are nouns?', 'Book and teacher are nouns.', 5.00, 30);
 
-insert into exams (id, paper_id, title, description, qualify_score, start_time, end_time, duration_minutes, time_limit, attempt_limit, display_mode, open_type, status)
-values (1, 1, '英语基础模拟考试', '系统初始化考试，用于验证考试端作答闭环', 9.00, '2026-01-01 00:00:00', '2026-12-31 23:59:59', 30, true, null, 'PAGED', 'PUBLIC', 'PUBLISHED');
+insert into exam_published_options (published_question_id, option_label, content, is_correct, sort_order)
+select epq.id, qo.option_label, qo.content, qo.is_correct, qo.sort_order
+from exam_published_questions epq
+join question_options qo on qo.question_id = epq.source_question_id;
+
+insert into exam_published_attachments (published_question_id, file_name, file_url, media_type, sort_order)
+select epq.id, qa.file_name, qa.file_url, qa.media_type, qa.sort_order
+from exam_published_questions epq
+join question_attachments qa on qa.question_id = epq.source_question_id;
 
 insert into menus (id, code, title, path, parent_id, sort_order, icon)
 values

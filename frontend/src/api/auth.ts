@@ -14,3 +14,11 @@ export async function fetchCurrentUser(): Promise<CurrentUser> {
 export async function logout(): Promise<void> {
   await apiClient.post<ApiResponse<void>>('/api/auth/logout')
 }
+
+export async function changePassword(payload: {
+  currentPassword: string
+  newPassword: string
+  confirmPassword: string
+}): Promise<void> {
+  await apiClient.post<ApiResponse<void>>('/api/auth/change-password', payload)
+}

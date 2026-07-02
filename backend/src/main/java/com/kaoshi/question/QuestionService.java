@@ -60,13 +60,27 @@ public class QuestionService {
     public ResponseEntity<byte[]> template() {
         return ExcelWorkbooks.template(
                 "试题导入模板.xlsx",
-                "questions",
-                List.of("题库名称", "题型", "难度", "题干", "选项A", "选项B", "选项C", "选项D", "正确答案", "解析"),
                 List.of(
-                        List.of("英语基础题库", "单选", "简单", "选择正确的主谓一致句子。", "He go to school.", "He goes to school.", "He going to school.", "He gone to school.", "B", "第三人称单数主语后动词使用 goes。"),
-                        List.of("英语基础题库", "多选", "简单", "下列哪些单词是名词？", "book", "quickly", "teacher", "beautiful", "A,C", "book 和 teacher 是名词。"),
-                        List.of("英语基础题库", "单选", "困难", "“提高”的英文最贴近哪一项？", "practice", "improve", "listen", "repeat", "B", "improve 表示提高、改善。"),
-                        List.of("英语基础题库", "多选", "困难", "哪些行为有助于英语听力训练？", "每天听英文材料", "只背中文释义", "跟读音频", "完全不复习", "A,C", "持续听音频和跟读能训练听力输入与语音识别。")
+                        new ExcelWorkbooks.SheetData(
+                                "试题导入",
+                                List.of("题库名称", "题型", "难度", "题干", "选项A", "选项B", "选项C", "选项D", "正确答案", "解析"),
+                                List.of(
+                                        List.of("英语基础题库", "单选", "简单", "选择正确的主谓一致句子。", "He go to school.", "He goes to school.", "He going to school.", "He gone to school.", "B", "第三人称单数主语后动词使用 goes。"),
+                                        List.of("英语基础题库", "多选", "简单", "下列哪些单词是名词？", "book", "quickly", "teacher", "beautiful", "AC", "book 和 teacher 是名词。"),
+                                        List.of("英语基础题库", "单选", "困难", "“提高”的英文最贴近哪一项？", "practice", "improve", "listen", "repeat", "B", "improve 表示提高、改善。"),
+                                        List.of("英语基础题库", "多选", "困难", "哪些行为有助于英语听力训练？", "每天听英文材料", "只背中文释义", "跟读音频", "完全不复习", "AC", "持续听音频和跟读能训练听力输入与语音识别。")
+                                )
+                        ),
+                        new ExcelWorkbooks.SheetData(
+                                "字典清单",
+                                List.of("字段", "可用值"),
+                                List.of(
+                                        List.of("题库名称", String.join("、", questionMapper.findActiveBankNames())),
+                                        List.of("题型", "单选、 多选"),
+                                        List.of("难度", "简单、 困难"),
+                                        List.of("正确答案", "单选填写 A/B/C/D；多选填写 AC/BCD，不使用逗号")
+                                )
+                        )
                 )
         );
     }
@@ -108,6 +122,9 @@ public class QuestionService {
 
     private QuestionSaveRequest rowToRequest(Row row) {
         String bankName = ExcelWorkbooks.text(row, 0).trim();
+        if (bankName.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题库名称不能为空");
+        }
         Long bankId = questionMapper.findBankIdByName(bankName);
         if (bankId == null) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题库不存在：" + bankName);
@@ -115,6 +132,9 @@ public class QuestionService {
         String type = normalizeType(ExcelWorkbooks.text(row, 1).trim());
         String difficulty = normalizeDifficulty(ExcelWorkbooks.text(row, 2).trim());
         String stem = ExcelWorkbooks.text(row, 3).trim();
+        if (stem.isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题干不能为空");
+        }
         List<QuestionOptionRequest> options = new ArrayList<>();
         for (int index = 0; index < 4; index++) {
             String label = String.valueOf((char) ('A' + index));
@@ -124,6 +144,15 @@ public class QuestionService {
             }
         }
         Set<String> correctLabels = parseCorrectLabels(ExcelWorkbooks.text(row, 8));
+        if (ExcelWorkbooks.text(row, 4).trim().isBlank()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "选项A不能为空");
+        }
+        for (String label : correctLabels) {
+            int index = label.charAt(0) - 'A';
+            if (index < 0 || index > 3 || ExcelWorkbooks.text(row, 4 + index).trim().isBlank()) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "正确答案引用的选项不能为空：" + label);
+            }
+        }
         options = options.stream()
                 .map(option -> new QuestionOptionRequest(option.label(), option.content(), correctLabels.contains(option.label())))
                 .toList();
@@ -163,15 +192,78 @@ public class QuestionService {
     }
 
     private Set<String> parseCorrectLabels(String value) {
-        Set<String> labels = value.toUpperCase().replace("，", ",").lines()
-                .flatMap(line -> List.of(line.split(",")).stream())
-                .map(String::trim)
+        String normalized = value == null ? "" : value.trim().toUpperCase();
+        if (normalized.contains(",") || normalized.contains("，")) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "正确答案请使用 AC，不要使用 A,C");
+        }
+        Set<String> labels = normalized.chars()
+                .mapToObj(character -> String.valueOf((char) character))
                 .filter(label -> !label.isBlank())
-                .collect(Collectors.toSet());
+                .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
         if (labels.isEmpty()) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "正确答案不能为空");
         }
+        for (String label : labels) {
+            if (!List.of("A", "B", "C", "D").contains(label)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "正确答案只能使用 A、B、C、D");
+            }
+        }
         return labels;
+    }
+
+    public ResponseEntity<byte[]> exportExcel() {
+        List<List<String>> rows = questionMapper.findQuestions(null, null, 10000, 0)
+                .stream()
+                .map(this::exportRow)
+                .toList();
+        return ExcelWorkbooks.template(
+                "试题导出.xlsx",
+                List.of(
+                        new ExcelWorkbooks.SheetData(
+                                "试题导出",
+                                List.of("题库名称", "题型", "难度", "题干", "选项A", "选项B", "选项C", "选项D", "正确答案", "解析"),
+                                rows
+                        ),
+                        new ExcelWorkbooks.SheetData(
+                                "字典清单",
+                                List.of("字段", "可用值"),
+                                List.of(
+                                        List.of("题库名称", String.join("、", questionMapper.findActiveBankNames())),
+                                        List.of("题型", "单选、 多选"),
+                                        List.of("难度", "简单、 困难"),
+                                        List.of("正确答案", "单选填写 A/B/C/D；多选填写 AC/BCD，不使用逗号")
+                                )
+                        )
+                )
+        );
+    }
+
+    private List<String> exportRow(Question question) {
+        List<QuestionOption> options = questionMapper.findOptions(question.getId());
+        String answer = options.stream()
+                .filter(QuestionOption::getCorrect)
+                .map(QuestionOption::getOptionLabel)
+                .collect(Collectors.joining());
+        return List.of(
+                questionMapper.findBankName(question.getBankId()),
+                SINGLE_CHOICE.equals(question.getType()) ? "单选" : "多选",
+                "HARD".equals(question.getDifficulty()) ? "困难" : "简单",
+                question.getStem(),
+                optionContent(options, "A"),
+                optionContent(options, "B"),
+                optionContent(options, "C"),
+                optionContent(options, "D"),
+                answer,
+                question.getAnalysis() == null ? "" : question.getAnalysis()
+        );
+    }
+
+    private String optionContent(List<QuestionOption> options, String label) {
+        return options.stream()
+                .filter(option -> label.equals(option.getOptionLabel()))
+                .map(QuestionOption::getContent)
+                .findFirst()
+                .orElse("");
     }
 
     @Transactional

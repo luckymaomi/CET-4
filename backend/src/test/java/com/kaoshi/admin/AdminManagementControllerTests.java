@@ -62,7 +62,6 @@ class AdminManagementControllerTests {
                                   "departmentId": 2,
                                   "username": "teacher",
                                   "displayName": "考务老师",
-                                  "password": "password",
                                   "roleIds": [2]
                                 }
                                 """))
@@ -83,7 +82,6 @@ class AdminManagementControllerTests {
                                 {
                                   "departmentId": 1,
                                   "displayName": "考务主管",
-                                  "password": "new-password",
                                   "roleIds": [2, 3]
                                 }
                                 """))
@@ -91,6 +89,14 @@ class AdminManagementControllerTests {
                 .andExpect(jsonPath("$.data.displayName").value("考务主管"))
                 .andExpect(jsonPath("$.data.departmentName").value("默认组织"))
                 .andExpect(jsonPath("$.data.roles.length()").value(2));
+
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"teacher","password":"123456"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.user.mustChangePassword").value(true));
 
         mockMvc.perform(patch("/api/admin/users/{id}/status", userId)
                         .header("Authorization", "Bearer " + token)
@@ -100,6 +106,50 @@ class AdminManagementControllerTests {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DISABLED"));
+
+        mockMvc.perform(get("/api/admin/users/import-template")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(result -> {
+                    assertThat(result.getResponse().getContentType()).contains("spreadsheetml.sheet");
+                    try (Workbook workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
+                        assertThat(workbook.getNumberOfSheets()).isEqualTo(2);
+                        assertThat(workbook.getSheetAt(0).getSheetName()).isEqualTo("用户导入");
+                        assertThat(workbook.getSheetAt(1).getSheetName()).isEqualTo("字典清单");
+                    }
+                });
+
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "users.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                userWorkbook("student001")
+        );
+        mockMvc.perform(multipart("/api/admin/users/import")
+                        .file(file)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.successCount").value(1))
+                .andExpect(jsonPath("$.data.failureCount").value(0));
+
+        MockMultipartFile duplicateFile = new MockMultipartFile(
+                "file",
+                "users-duplicate.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                userWorkbook("student001")
+        );
+        mockMvc.perform(multipart("/api/admin/users/import")
+                        .file(duplicateFile)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.successCount").value(0))
+                .andExpect(jsonPath("$.data.failureCount").value(1))
+                .andExpect(jsonPath("$.data.errors[0]").value(org.hamcrest.Matchers.containsString("账号已存在")));
+
+        mockMvc.perform(get("/api/admin/users/export")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentType()).contains("spreadsheetml.sheet"));
     }
 
     @Test
@@ -168,7 +218,7 @@ class AdminManagementControllerTests {
     }
 
     @Test
-    void departmentManagementSupportsTreeCrudTemplateAndImport() throws Exception {
+    void departmentManagementSupportsTreeCrud() throws Exception {
         String token = adminToken();
 
         mockMvc.perform(get("/api/admin/departments")
@@ -215,31 +265,10 @@ class AdminManagementControllerTests {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isConflict());
 
-        mockMvc.perform(get("/api/admin/departments/import-template")
+        mockMvc.perform(delete("/api/admin/departments/{id}", parentId + 1)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(result -> {
-                    assertThat(result.getResponse().getContentType()).contains("spreadsheetml.sheet");
-                    try (Workbook workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(result.getResponse().getContentAsByteArray()))) {
-                        assertThat(workbook.getNumberOfSheets()).isEqualTo(2);
-                        assertThat(workbook.getSheetAt(0).getSheetName()).isEqualTo("导入模板");
-                        assertThat(workbook.getSheetAt(1).getSheetName()).isEqualTo("现有部门");
-                        assertThat(workbook.getSheetAt(1).getRow(1).getCell(0).getStringCellValue()).isEqualTo("DEFAULT");
-                    }
-                });
-
-        MockMultipartFile file = new MockMultipartFile(
-                "file",
-                "departments.xlsx",
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                departmentWorkbook()
-        );
-        mockMvc.perform(multipart("/api/admin/departments/import")
-                        .file(file)
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.successCount").value(1))
-                .andExpect(jsonPath("$.data.failureCount").value(0));
+                .andExpect(jsonPath("$.code").value(0));
 
         String departmentTreeResponse = mockMvc.perform(get("/api/admin/departments")
                         .header("Authorization", "Bearer " + token))
@@ -247,23 +276,24 @@ class AdminManagementControllerTests {
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
-        assertThat(departmentTreeResponse).contains("EXCEL_DEPT");
+        assertThat(departmentTreeResponse).contains("E2E_DEPT");
+
     }
 
-    private byte[] departmentWorkbook() throws Exception {
+    private byte[] userWorkbook(String username) throws Exception {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("departments");
+            Sheet sheet = workbook.createSheet("用户导入");
             Row header = sheet.createRow(0);
-            String[] headers = {"部门编码", "部门名称", "上级部门编码", "状态", "说明"};
+            String[] headers = {"账号", "姓名", "部门", "角色", "状态"};
             for (int i = 0; i < headers.length; i++) {
                 header.createCell(i).setCellValue(headers[i]);
             }
             Row row = sheet.createRow(1);
-            row.createCell(0).setCellValue("EXCEL_DEPT");
-            row.createCell(1).setCellValue("Excel 导入部");
-            row.createCell(2).setCellValue("DEFAULT");
-            row.createCell(3).setCellValue("启用");
-            row.createCell(4).setCellValue("通过 Excel 导入");
+            row.createCell(0).setCellValue(username);
+            row.createCell(1).setCellValue("Excel 学员");
+            row.createCell(2).setCellValue("考试中心");
+            row.createCell(3).setCellValue("EXAM_MANAGER");
+            row.createCell(4).setCellValue("启用");
             workbook.write(output);
             return output.toByteArray();
         }

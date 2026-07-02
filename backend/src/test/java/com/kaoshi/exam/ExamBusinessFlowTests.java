@@ -18,6 +18,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.io.ByteArrayOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItems;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -36,119 +39,52 @@ class ExamBusinessFlowTests {
     private ObjectMapper objectMapper;
 
     @Test
-    void examBusinessFlowCreatesPaperPublishesExamAndScoresSubmission() throws Exception {
+    void examLifecycleSavesDraftPublishesAndScoresFromAttemptSnapshot() throws Exception {
         String token = adminToken();
+        long bankId = createBank(token, "阅读理解题库");
+        long questionId = createSingleChoiceQuestion(token, bankId);
 
-        String bankResponse = mockMvc.perform(post("/api/admin/question-banks")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "categoryId": 1,
-                                  "name": "阅读理解题库",
-                                  "description": "用于端到端测试",
-                                  "status": "ACTIVE"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.name").value("阅读理解题库"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        long bankId = objectMapper.readTree(bankResponse).at("/data/id").asLong();
+        String draftResponse = createDraftExam(token, bankId, """
+                "title": "阅读理解模拟考试",
+                "description": "用于端到端测试",
+                "qualifyScore": 6,
+                "startTime": "2026-01-01T00:00:00",
+                "endTime": "2026-12-31T23:59:59",
+                "durationMinutes": 20,
+                "timeLimit": true,
+                "attemptLimit": null,
+                "displayMode": "PAGED",
+                "questionOrderMode": "FIXED",
+                "openType": "PUBLIC"
+                """);
+        long examId = objectMapper.readTree(draftResponse).at("/data/id").asLong();
 
-        String questionResponse = mockMvc.perform(post("/api/admin/questions")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "bankId": %d,
-                                  "type": "SINGLE_CHOICE",
-                                  "stem": "Which word means fast?",
-                                  "analysis": "Quick means fast.",
-                                  "difficulty": "EASY",
-                                  "status": "ACTIVE",
-                                  "options": [
-                                    {"label": "A", "content": "slow", "correct": false},
-                                    {"label": "B", "content": "quick", "correct": true},
-                                    {"label": "C", "content": "late", "correct": false}
-                                  ],
-                                  "attachments": [
-                                    {"fileName": "quick.png", "fileUrl": "/assets/quick.png", "mediaType": "IMAGE"}
-                                  ]
-                                }
-                                """.formatted(bankId)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.options.length()").value(3))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        long questionId = objectMapper.readTree(questionResponse).at("/data/id").asLong();
-
-        String paperResponse = mockMvc.perform(post("/api/admin/papers")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "categoryId": 1,
-                                  "name": "阅读理解测试卷",
-                                  "description": "用于端到端测试",
-                                  "durationMinutes": 20,
-                                  "status": "ACTIVE",
-                                  "questions": [
-                                    {"questionId": %d, "score": 10}
-                                  ]
-                                }
-                                """.formatted(questionId)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.totalScore").value(10))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        long paperId = objectMapper.readTree(paperResponse).at("/data/id").asLong();
-
-        String examResponse = mockMvc.perform(post("/api/admin/exams")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "paperId": %d,
-                                  "title": "阅读理解模拟考试",
-                                  "description": "用于端到端测试",
-                                  "qualifyScore": 6,
-                                  "startTime": "2026-01-01T00:00:00",
-                                  "endTime": "2026-12-31T23:59:59",
-                                  "durationMinutes": 20,
-                                  "timeLimit": true,
-                                  "attemptLimit": null,
-                                  "displayMode": "PAGED",
-                                  "openType": "PUBLIC",
-                                  "departmentIds": [],
-                                  "status": "PUBLISHED"
-                                }
-                                """.formatted(paperId)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.qualifyScore").value(6))
-                .andExpect(jsonPath("$.data.displayMode").value("PAGED"))
-                .andExpect(jsonPath("$.data.openType").value("PUBLIC"))
-                .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
-        long examId = objectMapper.readTree(examResponse).at("/data/id").asLong();
-
-        mockMvc.perform(get("/api/exam/tasks")
+        mockMvc.perform(get("/api/admin/exams/{examId}", examId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].status").value("PUBLISHED"));
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.rules[0].bankId").value(bankId))
+                .andExpect(jsonPath("$.data.rules[0].singleCount").value(1))
+                .andExpect(jsonPath("$.data.rules[0].singleScore").value(10))
+                .andExpect(jsonPath("$.data.questionOrderMode").value("FIXED"));
+
+        mockMvc.perform(post("/api/admin/exams/{examId}/publish", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data.questionCount").value(1))
+                .andExpect(jsonPath("$.data.totalScore").value(10));
 
         mockMvc.perform(post("/api/exam/{examId}/start", examId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.displayMode").value("PAGED"))
+                .andExpect(jsonPath("$.data.questions[0].type").value("SINGLE_CHOICE"))
                 .andExpect(jsonPath("$.data.questions[0].attachments[0].mediaType").value("IMAGE"))
                 .andExpect(jsonPath("$.data.questions[0].attachments[0].fileUrl").value("/assets/quick.png"))
                 .andExpect(jsonPath("$.data.questions[0].options.length()").value(3));
+
+        updateQuestionToDifferentCorrectAnswer(token, bankId, questionId);
 
         mockMvc.perform(post("/api/exam/{examId}/submit", examId)
                         .header("Authorization", "Bearer " + token)
@@ -176,11 +112,6 @@ class ExamBusinessFlowTests {
                                 }
                                 """.formatted(questionId)))
                 .andExpect(status().isConflict());
-
-        mockMvc.perform(post("/api/exam/{examId}/start", examId)
-                        .header("Authorization", "Bearer " + token))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.questions[0].options.length()").value(3));
 
         String resultsResponse = mockMvc.perform(get("/api/admin/results")
                         .header("Authorization", "Bearer " + token))
@@ -212,46 +143,34 @@ class ExamBusinessFlowTests {
         mockMvc.perform(post("/api/exam/{examId}/start", 1)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.questions[0].attachments[0].fileUrl").value("/local-assets/dog-wolf-friendship.mp3"))
-                .andExpect(jsonPath("$.data.questions[0].attachments[0].mediaType").value("AUDIO"))
-                .andExpect(jsonPath("$.data.questions[1].attachments[0].fileUrl").value("/local-assets/noun-example.png"))
-                .andExpect(jsonPath("$.data.questions[1].attachments[0].mediaType").value("IMAGE"))
-                .andExpect(jsonPath("$.data.questions[2].attachments[0].fileUrl").value("/local-assets/improve-card.jpg"))
-                .andExpect(jsonPath("$.data.questions[2].attachments[0].mediaType").value("IMAGE"))
-                .andExpect(jsonPath("$.data.questions[3].attachments[0].fileUrl").value("/local-assets/practice-chart.png"))
-                .andExpect(jsonPath("$.data.questions[3].attachments[1].fileUrl").value("/local-assets/dog-wolf-friendship.mp3"));
+                .andExpect(jsonPath("$.data.questions[*].attachments[*].fileUrl").value(hasItems(
+                        "/local-assets/dog-wolf-friendship.mp3",
+                        "/local-assets/noun-example.png",
+                        "/local-assets/improve-card.jpg",
+                        "/local-assets/practice-chart.png"
+                )))
+                .andExpect(jsonPath("$.data.questions[*].attachments[*].mediaType").value(hasItems("AUDIO", "IMAGE")));
     }
 
     @Test
     void limitedAttemptExamRejectsRestartAfterSubmittedLimit() throws Exception {
         String token = adminToken();
 
-        String examResponse = mockMvc.perform(post("/api/admin/exams")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "paperId": 1,
-                                  "title": "限定次数考试",
-                                  "description": "用于验证可考次数",
-                                  "qualifyScore": 0,
-                                  "startTime": "2026-01-01T00:00:00",
-                                  "endTime": "2026-12-31T23:59:59",
-                                  "durationMinutes": 20,
-                                  "timeLimit": false,
-                                  "attemptLimit": 1,
-                                  "displayMode": "PAGED",
-                                  "openType": "PUBLIC",
-                                  "departmentIds": [],
-                                  "status": "PUBLISHED"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.attemptLimit").value(1))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String examResponse = createDraftExam(token, 1, """
+                "title": "限定次数考试",
+                "description": "用于验证可考次数",
+                "qualifyScore": 0,
+                "startTime": "2026-01-01T00:00:00",
+                "endTime": "2026-12-31T23:59:59",
+                "durationMinutes": 20,
+                "timeLimit": false,
+                "attemptLimit": 1,
+                "displayMode": "PAGED",
+                "questionOrderMode": "FIXED",
+                "openType": "PUBLIC"
+                """);
         long examId = objectMapper.readTree(examResponse).at("/data/id").asLong();
+        publishExam(token, examId);
 
         mockMvc.perform(post("/api/exam/{examId}/start", examId)
                         .header("Authorization", "Bearer " + token))
@@ -263,7 +182,8 @@ class ExamBusinessFlowTests {
                         .content("""
                                 {
                                   "answers": [
-                                    {"questionId": 1, "selectedLabels": ["A"]}
+                                    {"questionId": 1, "selectedLabels": ["B"]},
+                                    {"questionId": 2, "selectedLabels": ["A", "C"]}
                                   ]
                                 }
                                 """))
@@ -275,41 +195,45 @@ class ExamBusinessFlowTests {
     }
 
     @Test
-    void examDisplayModeIsConfiguredByAdminAndReturnedWithSession() throws Exception {
+    void examDisplayAndRandomOrderAreConfiguredByAdminAndPersistedInAttempt() throws Exception {
         String token = adminToken();
 
-        String examResponse = mockMvc.perform(post("/api/admin/exams")
-                        .header("Authorization", "Bearer " + token)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                  "paperId": 1,
-                                  "title": "整卷显示考试",
-                                  "description": "用于验证题目显示配置",
-                                  "qualifyScore": 0,
-                                  "startTime": "2026-01-01T00:00:00",
-                                  "endTime": "2026-12-31T23:59:59",
-                                  "durationMinutes": 20,
-                                  "timeLimit": false,
-                                  "attemptLimit": null,
-                                  "displayMode": "ALL",
-                                  "openType": "PUBLIC",
-                                  "departmentIds": [],
-                                  "status": "PUBLISHED"
-                                }
-                                """))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.displayMode").value("ALL"))
-                .andReturn()
-                .getResponse()
-                .getContentAsString();
+        String examResponse = createDraftExam(token, 1, 2, 2, """
+                "title": "整卷显示考试",
+                "description": "用于验证题目显示配置",
+                "qualifyScore": 0,
+                "startTime": "2026-01-01T00:00:00",
+                "endTime": "2026-12-31T23:59:59",
+                "durationMinutes": 20,
+                "timeLimit": false,
+                "attemptLimit": null,
+                "displayMode": "ALL",
+                "questionOrderMode": "RANDOM",
+                "openType": "PUBLIC"
+                """);
         long examId = objectMapper.readTree(examResponse).at("/data/id").asLong();
+        publishExam(token, examId);
 
-        mockMvc.perform(post("/api/exam/{examId}/start", examId)
+        String firstStart = mockMvc.perform(post("/api/exam/{examId}/start", examId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.displayMode").value("ALL"))
-                .andExpect(jsonPath("$.data.questions.length()").value(4));
+                .andExpect(jsonPath("$.data.questions.length()").value(4))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        String secondStart = mockMvc.perform(post("/api/exam/{examId}/start", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        assertThat(objectMapper.readTree(secondStart).at("/data/attemptId").asLong())
+                .isEqualTo(objectMapper.readTree(firstStart).at("/data/attemptId").asLong());
+        assertThat(objectMapper.readTree(secondStart).at("/data/questions").toString())
+                .isEqualTo(objectMapper.readTree(firstStart).at("/data/questions").toString());
     }
 
     @Test
@@ -353,12 +277,12 @@ class ExamBusinessFlowTests {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.fileName").value("listening.mp3"))
-                .andExpect(jsonPath("$.data.fileUrl").value(org.hamcrest.Matchers.startsWith("/uploads/")))
+                .andExpect(jsonPath("$.data.fileUrl").value(startsWith("/uploads/")))
                 .andExpect(jsonPath("$.data.mediaType").value("AUDIO"));
     }
 
     @Test
-    void questionExcelImportSupportsTemplateSuccessAndRowErrors() throws Exception {
+    void questionExcelImportSupportsTemplateExportSuccessAndRowErrors() throws Exception {
         String token = adminToken();
 
         mockMvc.perform(get("/api/admin/questions/import-template")
@@ -370,7 +294,7 @@ class ExamBusinessFlowTests {
                 "file",
                 "questions.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                questionWorkbook("英语基础题库")
+                questionWorkbook("英语基础题库", "AC")
         );
         mockMvc.perform(multipart("/api/admin/questions/import")
                         .file(file)
@@ -385,11 +309,16 @@ class ExamBusinessFlowTests {
                 .andExpect(jsonPath("$.data.records[0].stem").value("Excel import listening question"))
                 .andExpect(jsonPath("$.data.records[0].attachments.length()").value(0));
 
+        mockMvc.perform(get("/api/admin/questions/export")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(result -> assertThat(result.getResponse().getContentType()).contains("spreadsheetml.sheet"));
+
         MockMultipartFile invalidFile = new MockMultipartFile(
                 "file",
                 "questions-invalid.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                questionWorkbook("不存在的题库")
+                questionWorkbook("英语基础题库", "A,C")
         );
         mockMvc.perform(multipart("/api/admin/questions/import")
                         .file(invalidFile)
@@ -397,12 +326,123 @@ class ExamBusinessFlowTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.successCount").value(0))
                 .andExpect(jsonPath("$.data.failureCount").value(1))
-                .andExpect(jsonPath("$.data.errors[0]").value(org.hamcrest.Matchers.containsString("题库不存在")));
+                .andExpect(jsonPath("$.data.errors[0]").value(containsString("请使用 AC")));
     }
 
-    private byte[] questionWorkbook(String bankName) throws Exception {
+    private long createBank(String token, String name) throws Exception {
+        String response = mockMvc.perform(post("/api/admin/question-banks")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "categoryId": 1,
+                                  "name": "%s",
+                                  "description": "用于端到端测试",
+                                  "status": "ACTIVE"
+                                }
+                                """.formatted(name)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.name").value(name))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response).at("/data/id").asLong();
+    }
+
+    private long createSingleChoiceQuestion(String token, long bankId) throws Exception {
+        String response = mockMvc.perform(post("/api/admin/questions")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bankId": %d,
+                                  "type": "SINGLE_CHOICE",
+                                  "stem": "Which word means fast?",
+                                  "analysis": "Quick means fast.",
+                                  "difficulty": "EASY",
+                                  "status": "ACTIVE",
+                                  "options": [
+                                    {"label": "A", "content": "slow", "correct": false},
+                                    {"label": "B", "content": "quick", "correct": true},
+                                    {"label": "C", "content": "late", "correct": false}
+                                  ],
+                                  "attachments": [
+                                    {"fileName": "quick.png", "fileUrl": "/assets/quick.png", "mediaType": "IMAGE"}
+                                  ]
+                                }
+                                """.formatted(bankId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.options.length()").value(3))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response).at("/data/id").asLong();
+    }
+
+    private void updateQuestionToDifferentCorrectAnswer(String token, long bankId, long questionId) throws Exception {
+        mockMvc.perform(put("/api/admin/questions/{questionId}", questionId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bankId": %d,
+                                  "type": "SINGLE_CHOICE",
+                                  "stem": "Changed source question",
+                                  "analysis": "Changed analysis.",
+                                  "difficulty": "HARD",
+                                  "status": "ACTIVE",
+                                  "options": [
+                                    {"label": "A", "content": "quick", "correct": true},
+                                    {"label": "B", "content": "slow", "correct": false}
+                                  ],
+                                  "attachments": []
+                                }
+                                """.formatted(bankId)))
+                .andExpect(status().isOk());
+    }
+
+    private String createDraftExam(String token, long bankId, String fields) throws Exception {
+        return createDraftExam(token, bankId, 1, 0, fields);
+    }
+
+    private String createDraftExam(String token, long bankId, int singleCount, int multipleCount, String fields) throws Exception {
+        int singleScore = singleCount == 0 ? 0 : 10;
+        int multipleScore = multipleCount == 0 ? 0 : 10;
+        return mockMvc.perform(post("/api/admin/exams")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  %s,
+                                  "departmentIds": [],
+                                  "rules": [
+                                    {
+                                      "bankId": %d,
+                                      "singleCount": %d,
+                                      "singleScore": %d,
+                                      "multipleCount": %d,
+                                      "multipleScore": %d
+                                    }
+                                  ]
+                                }
+                                """.formatted(fields, bankId, singleCount, singleScore, multipleCount, multipleScore)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+    }
+
+    private void publishExam(String token, long examId) throws Exception {
+        mockMvc.perform(post("/api/admin/exams/{examId}/publish", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"));
+    }
+
+    private byte[] questionWorkbook(String bankName, String answer) throws Exception {
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            Sheet sheet = workbook.createSheet("questions");
+            Sheet sheet = workbook.createSheet("试题导入");
             Row header = sheet.createRow(0);
             String[] headers = {"题库名称", "题型", "难度", "题干", "选项A", "选项B", "选项C", "选项D", "正确答案", "解析"};
             for (int i = 0; i < headers.length; i++) {
@@ -417,7 +457,7 @@ class ExamBusinessFlowTests {
             row.createCell(5).setCellValue("speak");
             row.createCell(6).setCellValue("sleep");
             row.createCell(7).setCellValue("walk");
-            row.createCell(8).setCellValue("A，B");
+            row.createCell(8).setCellValue(answer);
             row.createCell(9).setCellValue("Listening and speaking are language skills.");
             workbook.write(output);
             return output.toByteArray();
@@ -440,4 +480,3 @@ class ExamBusinessFlowTests {
         return token;
     }
 }
-

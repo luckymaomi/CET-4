@@ -12,7 +12,9 @@
 
     <el-table v-loading="loading" :data="tasks" class="data-table" border>
       <el-table-column prop="title" label="考试名称" min-width="180" />
-      <el-table-column prop="paperName" label="试卷" min-width="160" />
+      <el-table-column label="题量/总分" width="130">
+        <template #default="{ row }: { row: Exam }">{{ row.questionCount }} 题 / {{ row.totalScore }} 分</template>
+      </el-table-column>
       <el-table-column label="开始时间" width="180">
         <template #default="{ row }: { row: Exam }">{{ formatDateTime(row.startTime) }}</template>
       </el-table-column>

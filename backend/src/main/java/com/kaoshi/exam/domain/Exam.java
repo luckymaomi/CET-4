@@ -11,7 +11,6 @@ import java.math.BigDecimal;
 public class Exam {
     @TableId(type = IdType.AUTO)
     private Long id;
-    private Long paperId;
     private String title;
     private String description;
     private BigDecimal qualifyScore;
@@ -21,6 +20,7 @@ public class Exam {
     private Boolean timeLimit;
     private Integer attemptLimit;
     private String displayMode;
+    private String questionOrderMode;
     private String openType;
     private String status;
 
@@ -30,14 +30,6 @@ public class Exam {
 
     public void setId(Long id) {
         this.id = id;
-    }
-
-    public Long getPaperId() {
-        return paperId;
-    }
-
-    public void setPaperId(Long paperId) {
-        this.paperId = paperId;
     }
 
     public String getTitle() {
@@ -110,6 +102,14 @@ public class Exam {
 
     public void setDisplayMode(String displayMode) {
         this.displayMode = displayMode;
+    }
+
+    public String getQuestionOrderMode() {
+        return questionOrderMode;
+    }
+
+    public void setQuestionOrderMode(String questionOrderMode) {
+        this.questionOrderMode = questionOrderMode;
     }
 
     public String getOpenType() {

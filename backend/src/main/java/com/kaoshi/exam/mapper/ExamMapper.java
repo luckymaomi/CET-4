@@ -16,21 +16,6 @@ import java.util.Map;
 
 @Mapper
 public interface ExamMapper {
-    @Select("select count(*) from papers where id = #{paperId} and status = 'ACTIVE'")
-    long countActivePaperById(@Param("paperId") Long paperId);
-
-    @Select("select name from papers where id = #{paperId}")
-    String findPaperName(@Param("paperId") Long paperId);
-
-    @Select("select total_score from papers where id = #{paperId}")
-    BigDecimal findPaperTotalScore(@Param("paperId") Long paperId);
-
-    @Select("select department_id from users where id = #{userId} and deleted_at is null")
-    Long findUserDepartmentId(@Param("userId") Long userId);
-
-    @Select("select count(*) from departments where id = #{departmentId} and status = 'ACTIVE'")
-    int countActiveDepartmentById(@Param("departmentId") Long departmentId);
-
     @Select("select count(*) from exams where #{keyword} is null or title like #{keyword}")
     long countExams(@Param("keyword") String keyword);
 
@@ -47,16 +32,15 @@ public interface ExamMapper {
     Exam findExamById(@Param("id") Long id);
 
     @Insert("""
-            insert into exams (paper_id, title, description, qualify_score, start_time, end_time, duration_minutes, time_limit, attempt_limit, display_mode, open_type, status)
-            values (#{paperId}, #{title}, #{description}, #{qualifyScore}, #{startTime}, #{endTime}, #{durationMinutes}, #{timeLimit}, #{attemptLimit}, #{displayMode}, #{openType}, #{status})
+            insert into exams (title, description, qualify_score, start_time, end_time, duration_minutes, time_limit, attempt_limit, display_mode, question_order_mode, open_type, status)
+            values (#{title}, #{description}, #{qualifyScore}, #{startTime}, #{endTime}, #{durationMinutes}, #{timeLimit}, #{attemptLimit}, #{displayMode}, #{questionOrderMode}, #{openType}, #{status})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertExam(Exam exam);
 
     @Update("""
             update exams
-            set paper_id = #{paperId},
-                title = #{title},
+            set title = #{title},
                 description = #{description},
                 qualify_score = #{qualifyScore},
                 start_time = #{startTime},
@@ -65,12 +49,22 @@ public interface ExamMapper {
                 time_limit = #{timeLimit},
                 attempt_limit = #{attemptLimit},
                 display_mode = #{displayMode},
+                question_order_mode = #{questionOrderMode},
                 open_type = #{openType},
                 status = #{status},
                 updated_at = current_timestamp
             where id = #{id}
             """)
     int updateExam(Exam exam);
+
+    @Update("update exams set status = #{status}, updated_at = current_timestamp where id = #{examId}")
+    int updateExamStatus(@Param("examId") Long examId, @Param("status") String status);
+
+    @Select("select department_id from users where id = #{userId} and deleted_at is null")
+    Long findUserDepartmentId(@Param("userId") Long userId);
+
+    @Select("select count(*) from departments where id = #{departmentId} and status = 'ACTIVE'")
+    int countActiveDepartmentById(@Param("departmentId") Long departmentId);
 
     @Delete("delete from exam_departments where exam_id = #{examId}")
     void deleteExamDepartments(@Param("examId") Long examId);
@@ -88,6 +82,131 @@ public interface ExamMapper {
             order by department_id
             """)
     List<Long> findExamDepartmentIds(@Param("examId") Long examId);
+
+    @Select("select count(*) from question_banks where id = #{bankId} and status = 'ACTIVE'")
+    int countActiveBankById(@Param("bankId") Long bankId);
+
+    @Select("select name from question_banks where id = #{bankId}")
+    String findBankName(@Param("bankId") Long bankId);
+
+    @Delete("delete from exam_rules where exam_id = #{examId}")
+    void deleteExamRules(@Param("examId") Long examId);
+
+    @Insert("""
+            insert into exam_rules (exam_id, bank_id, single_count, single_score, multiple_count, multiple_score, sort_order)
+            values (#{examId}, #{bankId}, #{singleCount}, #{singleScore}, #{multipleCount}, #{multipleScore}, #{sortOrder})
+            """)
+    void insertExamRule(Map<String, Object> rule);
+
+    @Select("""
+            select *
+            from exam_rules
+            where exam_id = #{examId}
+            order by sort_order, id
+            """)
+    List<Map<String, Object>> findExamRules(@Param("examId") Long examId);
+
+    @Select("""
+            select count(*)
+            from questions
+            where bank_id = #{bankId}
+              and type = #{type}
+              and status = 'ACTIVE'
+            """)
+    int countActiveQuestions(@Param("bankId") Long bankId, @Param("type") String type);
+
+    @Select("""
+            select id as questionId, type, stem, analysis
+            from questions
+            where bank_id = #{bankId}
+              and type = #{type}
+              and status = 'ACTIVE'
+            order by id
+            limit #{limit}
+            """)
+    List<Map<String, Object>> findQuestionsForPublish(
+            @Param("bankId") Long bankId,
+            @Param("type") String type,
+            @Param("limit") int limit
+    );
+
+    @Delete("""
+            delete from exam_published_attachments
+            where published_question_id in (
+              select id from exam_published_questions where exam_id = #{examId}
+            )
+            """)
+    void deletePublishedAttachments(@Param("examId") Long examId);
+
+    @Delete("""
+            delete from exam_published_options
+            where published_question_id in (
+              select id from exam_published_questions where exam_id = #{examId}
+            )
+            """)
+    void deletePublishedOptions(@Param("examId") Long examId);
+
+    @Delete("delete from exam_published_questions where exam_id = #{examId}")
+    void deletePublishedQuestions(@Param("examId") Long examId);
+
+    @Insert("""
+            insert into exam_published_questions (exam_id, source_question_id, type, stem, analysis, score, sort_order)
+            values (#{examId}, #{sourceQuestionId}, #{type}, #{stem}, #{analysis}, #{score}, #{sortOrder})
+            """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    void insertPublishedQuestion(Map<String, Object> question);
+
+    @Insert("""
+            insert into exam_published_options (published_question_id, option_label, content, is_correct, sort_order)
+            select #{publishedQuestionId}, option_label, content, is_correct, sort_order
+            from question_options
+            where question_id = #{sourceQuestionId}
+            order by sort_order, id
+            """)
+    void copyPublishedOptions(@Param("publishedQuestionId") Long publishedQuestionId, @Param("sourceQuestionId") Long sourceQuestionId);
+
+    @Insert("""
+            insert into exam_published_attachments (published_question_id, file_name, file_url, media_type, sort_order)
+            select #{publishedQuestionId}, file_name, file_url, media_type, sort_order
+            from question_attachments
+            where question_id = #{sourceQuestionId}
+            order by sort_order, id
+            """)
+    void copyPublishedAttachments(@Param("publishedQuestionId") Long publishedQuestionId, @Param("sourceQuestionId") Long sourceQuestionId);
+
+    @Select("""
+            select coalesce(sum(score), 0)
+            from exam_published_questions
+            where exam_id = #{examId}
+            """)
+    BigDecimal findPublishedTotalScore(@Param("examId") Long examId);
+
+    @Select("select count(*) from exam_published_questions where exam_id = #{examId}")
+    int countPublishedQuestions(@Param("examId") Long examId);
+
+    @Select("""
+            select *
+            from exam_published_questions
+            where exam_id = #{examId}
+            order by sort_order, id
+            """)
+    List<Map<String, Object>> findPublishedQuestions(@Param("examId") Long examId);
+
+    @Select("""
+            select id, option_label as label, content, is_correct as correct, sort_order as sortOrder
+            from exam_published_options
+            where published_question_id = #{publishedQuestionId}
+            order by sort_order, id
+            """)
+    List<Map<String, Object>> findPublishedOptions(@Param("publishedQuestionId") Long publishedQuestionId);
+
+    @Select("""
+            select id, file_name as fileName, file_url as fileUrl, media_type as mediaType, sort_order as sortOrder
+            from exam_published_attachments
+            where published_question_id = #{publishedQuestionId}
+            order by sort_order, id
+            """)
+    List<Map<String, Object>> findPublishedAttachments(@Param("publishedQuestionId") Long publishedQuestionId);
 
     @Select("""
             select *
@@ -113,44 +232,6 @@ public interface ExamMapper {
             order by e.start_time desc, e.id desc
             """)
     List<Exam> findPublishedExamsByDepartment(@Param("departmentId") Long departmentId);
-
-    @Select("""
-            select pq.question_id as questionId,
-                   q.type as type,
-                   q.stem as stem,
-                   pq.score as score,
-                   pq.sort_order as sortOrder
-            from exams e
-            join paper_questions pq on pq.paper_id = e.paper_id
-            join questions q on q.id = pq.question_id
-            where e.id = #{examId}
-            order by pq.sort_order, pq.id
-            """)
-    List<Map<String, Object>> findExamQuestions(@Param("examId") Long examId);
-
-    @Select("""
-            select id, option_label as label, content, sort_order as sortOrder
-            from question_options
-            where question_id = #{questionId}
-            order by sort_order, id
-            """)
-    List<Map<String, Object>> findQuestionOptions(@Param("questionId") Long questionId);
-
-    @Select("""
-            select id, file_name as fileName, file_url as fileUrl, media_type as mediaType, sort_order as sortOrder
-            from question_attachments
-            where question_id = #{questionId}
-            order by sort_order, id
-            """)
-    List<Map<String, Object>> findQuestionAttachments(@Param("questionId") Long questionId);
-
-    @Select("""
-            select option_label
-            from question_options
-            where question_id = #{questionId} and is_correct = true
-            order by option_label
-            """)
-    List<String> findCorrectLabels(@Param("questionId") Long questionId);
 
     @Select("""
             select *
@@ -179,16 +260,73 @@ public interface ExamMapper {
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertAttempt(Map<String, Object> attempt);
 
-    @Select("select * from exam_attempts where id = #{attemptId}")
-    Map<String, Object> findAttemptById(@Param("attemptId") Long attemptId);
+    @Select("select count(*) from exam_attempt_questions where attempt_id = #{attemptId}")
+    int countAttemptQuestions(@Param("attemptId") Long attemptId);
 
     @Insert("""
-            insert into exam_answers (attempt_id, question_id, selected_labels, is_correct, score)
-            values (#{attemptId}, #{questionId}, #{selectedLabels}, #{correct}, #{score})
+            insert into exam_attempt_questions (attempt_id, published_question_id, source_question_id, type, stem, analysis, score, sort_order, display_order)
+            values (#{attemptId}, #{publishedQuestionId}, #{sourceQuestionId}, #{type}, #{stem}, #{analysis}, #{score}, #{sortOrder}, #{displayOrder})
+            """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
+    void insertAttemptQuestion(Map<String, Object> question);
+
+    @Insert("""
+            insert into exam_attempt_options (attempt_question_id, option_label, content, is_correct, sort_order)
+            select #{attemptQuestionId}, option_label, content, is_correct, sort_order
+            from exam_published_options
+            where published_question_id = #{publishedQuestionId}
+            order by sort_order, id
+            """)
+    void copyAttemptOptions(@Param("attemptQuestionId") Long attemptQuestionId, @Param("publishedQuestionId") Long publishedQuestionId);
+
+    @Insert("""
+            insert into exam_attempt_attachments (attempt_question_id, file_name, file_url, media_type, sort_order)
+            select #{attemptQuestionId}, file_name, file_url, media_type, sort_order
+            from exam_published_attachments
+            where published_question_id = #{publishedQuestionId}
+            order by sort_order, id
+            """)
+    void copyAttemptAttachments(@Param("attemptQuestionId") Long attemptQuestionId, @Param("publishedQuestionId") Long publishedQuestionId);
+
+    @Select("""
+            select *
+            from exam_attempt_questions
+            where attempt_id = #{attemptId}
+            order by display_order, id
+            """)
+    List<Map<String, Object>> findAttemptQuestions(@Param("attemptId") Long attemptId);
+
+    @Select("""
+            select id, option_label as label, content, sort_order as sortOrder
+            from exam_attempt_options
+            where attempt_question_id = #{attemptQuestionId}
+            order by sort_order, id
+            """)
+    List<Map<String, Object>> findAttemptOptions(@Param("attemptQuestionId") Long attemptQuestionId);
+
+    @Select("""
+            select id, file_name as fileName, file_url as fileUrl, media_type as mediaType, sort_order as sortOrder
+            from exam_attempt_attachments
+            where attempt_question_id = #{attemptQuestionId}
+            order by sort_order, id
+            """)
+    List<Map<String, Object>> findAttemptAttachments(@Param("attemptQuestionId") Long attemptQuestionId);
+
+    @Select("""
+            select option_label
+            from exam_attempt_options
+            where attempt_question_id = #{attemptQuestionId} and is_correct = true
+            order by option_label
+            """)
+    List<String> findAttemptCorrectLabels(@Param("attemptQuestionId") Long attemptQuestionId);
+
+    @Insert("""
+            insert into exam_answers (attempt_id, attempt_question_id, selected_labels, is_correct, score)
+            values (#{attemptId}, #{attemptQuestionId}, #{selectedLabels}, #{correct}, #{score})
             """)
     void insertAnswer(
             @Param("attemptId") Long attemptId,
-            @Param("questionId") Long questionId,
+            @Param("attemptQuestionId") Long attemptQuestionId,
             @Param("selectedLabels") String selectedLabels,
             @Param("correct") boolean correct,
             @Param("score") BigDecimal score
@@ -245,22 +383,20 @@ public interface ExamMapper {
     Map<String, Object> findResultById(@Param("resultId") Long resultId);
 
     @Select("""
-            select ea.question_id as questionId,
-                   q.type as type,
-                   q.stem as stem,
-                   q.analysis as analysis,
-                   pq.score as score,
+            select aq.id as attemptQuestionId,
+                   aq.source_question_id as questionId,
+                   aq.type as type,
+                   aq.stem as stem,
+                   aq.analysis as analysis,
+                   aq.score as score,
                    ea.score as obtainedScore,
-                   pq.sort_order as sortOrder,
+                   aq.display_order as sortOrder,
                    ea.selected_labels as selectedLabels,
                    ea.is_correct as correct
-            from exam_answers ea
-            join exam_attempts a on a.id = ea.attempt_id
-            join exams e on e.id = a.exam_id
-            join paper_questions pq on pq.paper_id = e.paper_id and pq.question_id = ea.question_id
-            join questions q on q.id = ea.question_id
-            where ea.attempt_id = #{attemptId}
-            order by pq.sort_order, pq.id
+            from exam_attempt_questions aq
+            join exam_answers ea on ea.attempt_question_id = aq.id
+            where aq.attempt_id = #{attemptId}
+            order by aq.display_order, aq.id
             """)
     List<Map<String, Object>> findResultQuestions(@Param("attemptId") Long attemptId);
 }

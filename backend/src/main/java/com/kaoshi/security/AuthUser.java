@@ -12,6 +12,7 @@ public record AuthUser(
         String displayName,
         String password,
         String status,
+        Boolean mustChangePassword,
         List<String> roles,
         List<String> permissions,
         Collection<? extends GrantedAuthority> authorities

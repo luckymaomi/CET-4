@@ -5,22 +5,9 @@
         <h1>部门管理</h1>
       </div>
       <div class="header-actions">
-        <el-button :icon="Download" @click="downloadTemplate">下载模板</el-button>
-        <el-upload :show-file-list="false" accept=".xlsx" :before-upload="handleImport">
-          <el-button :icon="Upload">导入部门</el-button>
-        </el-upload>
         <el-button type="primary" :icon="Plus" @click="openCreateDialog(null)">新建部门</el-button>
       </div>
     </header>
-
-    <el-alert v-if="importResult" :type="importResult.failureCount ? 'warning' : 'success'" show-icon :closable="false">
-      <template #title>
-        导入完成：成功 {{ importResult.successCount }} 条，失败 {{ importResult.failureCount }} 条
-      </template>
-      <ul v-if="importResult.errors.length" class="import-errors">
-        <li v-for="error in importResult.errors" :key="error">{{ error }}</li>
-      </ul>
-    </el-alert>
 
     <el-table
       v-loading="loading"
@@ -95,28 +82,23 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRawFile } from 'element-plus'
-import { Download, Plus, Upload } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 
 import {
   createDepartment,
   deleteDepartment,
-  downloadDepartmentImportTemplate,
   fetchDepartments,
-  importDepartments,
   updateDepartment,
   type Department,
   type DepartmentPayload,
-  type ExcelImportResult,
 } from '@/api/admin'
-import { downloadBlob } from '@/utils/download'
 
 const departments = ref<Department[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
 const editingDepartment = ref<Department | null>(null)
-const importResult = ref<ExcelImportResult | null>(null)
 const formRef = ref<FormInstance>()
 
 const form = reactive<DepartmentPayload>({
@@ -208,17 +190,6 @@ async function removeDepartment(department: Department) {
   await loadDepartments()
 }
 
-async function downloadTemplate() {
-  const blob = await downloadDepartmentImportTemplate()
-  downloadBlob(blob, '部门导入模板.xlsx')
-}
-
-async function handleImport(file: UploadRawFile) {
-  importResult.value = await importDepartments(file)
-  await loadDepartments()
-  return false
-}
-
 function withoutDepartment(items: Department[], departmentId: number): Department[] {
   return items
     .filter((item) => item.id !== departmentId)
@@ -240,10 +211,3 @@ function generateDepartmentCode(name: string, parentId: number | null) {
   return `${prefix}_${readable}_${Date.now().toString(36).toUpperCase()}`
 }
 </script>
-
-<style scoped>
-.import-errors {
-  margin: 8px 0 0;
-  padding-left: 18px;
-}
-</style>

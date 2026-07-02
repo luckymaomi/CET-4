@@ -18,10 +18,14 @@
           <span class="entity-name">{{ row.title }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="paperName" label="内部试卷" min-width="180" />
-      <el-table-column label="分数" width="130">
+      <el-table-column label="组卷规模" width="140">
         <template #default="{ row }: { row: Exam }">
-          {{ row.qualifyScore }} / {{ row.totalScore }}
+          {{ row.questionCount }} 题 / {{ row.totalScore }} 分
+        </template>
+      </el-table-column>
+      <el-table-column label="及格分" width="100">
+        <template #default="{ row }: { row: Exam }">
+          {{ row.qualifyScore }}
         </template>
       </el-table-column>
       <el-table-column label="时间" min-width="230">
@@ -32,29 +36,32 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="开放范围" width="130">
+      <el-table-column label="开放范围" width="120">
         <template #default="{ row }: { row: Exam }">
           <el-tag effect="plain" :type="row.openType === 'PUBLIC' ? 'success' : 'warning'">
-            {{ row.openType === 'PUBLIC' ? '完全公开' : '部门开放' }}
+            {{ row.openType === 'PUBLIC' ? '公开' : '部门' }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="可考次数" width="120">
+      <el-table-column label="题目显示" width="150">
         <template #default="{ row }: { row: Exam }">
-          {{ row.attemptLimit ? `最多 ${row.attemptLimit} 次` : '无限次' }}
+          <div class="entity-stack">
+            <span>{{ displayModeText(row.displayMode) }}</span>
+            <span class="muted-text">{{ questionOrderText(row.questionOrderMode) }}</span>
+          </div>
         </template>
       </el-table-column>
-      <el-table-column label="题目显示" width="110">
+      <el-table-column label="可考次数" width="110">
         <template #default="{ row }: { row: Exam }">
-          {{ displayModeText(row.displayMode) }}
+          {{ row.attemptLimit ? `${row.attemptLimit} 次` : '无限次' }}
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="110">
+      <el-table-column label="状态" width="100">
         <template #default="{ row }: { row: Exam }">
           <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column fixed="right" label="操作" width="120">
+      <el-table-column fixed="right" label="操作" width="130">
         <template #default="{ row }: { row: Exam }">
           <el-button link type="primary" @click="openEditEditor(row)">编辑</el-button>
         </template>
@@ -66,7 +73,7 @@
     </div>
 
     <el-dialog v-model="editorVisible" :title="editingExam ? '编辑考试' : '新建考试'" width="min(1180px, 96vw)" class="exam-publish-dialog">
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="exam-publish">
+      <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" class="exam-publish">
         <header class="publish-summary">
           <div>
             <span>试卷总分</span>
@@ -78,11 +85,11 @@
           </div>
           <div>
             <span>开放范围</span>
-            <strong>{{ form.openType === 'PUBLIC' ? '完全公开' : '部门开放' }}</strong>
+            <strong>{{ form.openType === 'PUBLIC' ? '公开' : '部门' }}</strong>
           </div>
           <div>
-            <span>发布状态</span>
-            <strong>{{ statusText(form.status) }}</strong>
+            <span>当前状态</span>
+            <strong>{{ statusText(currentStatus) }}</strong>
           </div>
         </header>
 
@@ -131,7 +138,7 @@
               <el-input v-model.trim="form.description" type="textarea" :rows="3" maxlength="500" />
             </el-form-item>
             <el-form-item label="及格分" prop="qualifyScore">
-              <el-input-number v-model="form.qualifyScore" :min="0" :max="totalScore" :step="0.5" />
+              <el-input-number v-model="form.qualifyScore" :min="0" :max="Math.max(totalScore, 0)" :step="0.5" />
             </el-form-item>
             <el-form-item label="考试时长" prop="durationMinutes">
               <el-input-number v-model="form.durationMinutes" :min="1" :step="5" />
@@ -148,11 +155,11 @@
             <el-form-item label="题目显示" prop="displayMode">
               <el-segmented v-model="form.displayMode" :options="displayModeOptions" />
             </el-form-item>
+            <el-form-item label="题目顺序" prop="questionOrderMode">
+              <el-segmented v-model="form.questionOrderMode" :options="questionOrderOptions" />
+            </el-form-item>
             <el-form-item label="考试日期">
               <el-switch v-model="form.timeLimit" active-text="限时开放" inactive-text="不限日期" />
-            </el-form-item>
-            <el-form-item label="发布状态" prop="status">
-              <el-segmented v-model="form.status" :options="statusOptions" />
             </el-form-item>
             <el-form-item v-if="form.timeLimit" label="开放时间" class="span-2" required>
               <el-date-picker
@@ -172,7 +179,7 @@
           <div class="publish-form-grid">
             <el-form-item label="开放范围" prop="openType">
               <el-radio-group v-model="form.openType">
-                <el-radio-button value="PUBLIC">完全公开</el-radio-button>
+                <el-radio-button value="PUBLIC">公开考试</el-radio-button>
                 <el-radio-button value="DEPARTMENT">部门开放</el-radio-button>
               </el-radio-group>
             </el-form-item>
@@ -195,10 +202,12 @@
 
       <template #footer>
         <div class="publish-footer">
-          <span>保存后会按当前组卷规则生成内部试卷。</span>
-          <div>
+          <span>保存草稿会持久化当前组卷规则；发布考试会生成本次发布快照。</span>
+          <div class="footer-actions">
             <el-button @click="editorVisible = false">取消</el-button>
-            <el-button type="primary" :loading="saving" @click="submitExam">保存</el-button>
+            <el-button v-if="editingExam && currentStatus !== 'CLOSED'" :loading="closing" @click="closeCurrentExam">关闭考试</el-button>
+            <el-button type="primary" plain :loading="saving" @click="saveDraft">保存草稿</el-button>
+            <el-button type="primary" :disabled="!editingExam" :loading="publishing" @click="publishCurrentExam">发布考试</el-button>
           </div>
         </div>
       </template>
@@ -213,23 +222,22 @@ import { Plus, Search } from '@element-plus/icons-vue'
 
 import { fetchDepartments, type Department } from '@/api/admin'
 import {
+  closeExam,
   createExam,
-  createPaper,
+  fetchAdminExamDetail,
   fetchAdminExams,
-  fetchPaperCategories,
   fetchQuestionBanks,
   fetchQuestions,
+  publishExam,
   updateExam,
   type Exam,
   type ExamPayload,
-  type NamedCategory,
-  type PaperQuestionPayload,
   type Question,
   type QuestionBank,
 } from '@/api/exam-business'
 import { formatDateTime } from '@/utils/datetime'
 
-interface ExamRule {
+interface ExamRuleForm {
   rowId: number
   bankId: number | null
   singleCount: number
@@ -238,28 +246,29 @@ interface ExamRule {
   multipleScore: number
 }
 
-const statusOptions = [
-  { label: '草稿', value: 'DRAFT' },
-  { label: '发布', value: 'PUBLISHED' },
-  { label: '关闭', value: 'CLOSED' },
-]
-
 const displayModeOptions = [
   { label: '逐题显示', value: 'PAGED' },
   { label: '整卷一页', value: 'ALL' },
 ]
 
+const questionOrderOptions = [
+  { label: '固定顺序', value: 'FIXED' },
+  { label: '随机顺序', value: 'RANDOM' },
+]
+
 const exams = ref<Exam[]>([])
 const banks = ref<QuestionBank[]>([])
 const departments = ref<Department[]>([])
-const paperCategories = ref<NamedCategory[]>([])
 const bankQuestions = ref<Record<number, Question[]>>({})
-const ruleset = ref<ExamRule[]>([])
+const ruleset = ref<ExamRuleForm[]>([])
 const total = ref(0)
 const loading = ref(false)
 const saving = ref(false)
+const publishing = ref(false)
+const closing = ref(false)
 const editorVisible = ref(false)
 const editingExam = ref<Exam | null>(null)
+const currentStatus = ref<Exam['status']>('DRAFT')
 const formRef = ref<FormInstance>()
 const timeRange = ref<[string, string]>(['2026-01-01T00:00:00', '2026-12-31T23:59:59'])
 const attemptLimitMode = ref<'UNLIMITED' | 'LIMITED'>('UNLIMITED')
@@ -267,7 +276,6 @@ const limitedAttemptCount = ref(1)
 
 const query = reactive({ page: 1, size: 20, keyword: '' })
 const form = reactive<ExamPayload>({
-  paperId: 0,
   title: '',
   description: '',
   qualifyScore: 0,
@@ -277,25 +285,26 @@ const form = reactive<ExamPayload>({
   timeLimit: true,
   attemptLimit: null,
   displayMode: 'PAGED',
+  questionOrderMode: 'FIXED',
   openType: 'PUBLIC',
   departmentIds: [],
-  status: 'PUBLISHED',
+  rules: [],
 })
 
-const rules: FormRules<ExamPayload> = {
+const formRules: FormRules<ExamPayload> = {
   title: [{ required: true, message: '请输入考试名称', trigger: 'blur' }],
   qualifyScore: [{ required: true, message: '请输入及格分', trigger: 'change' }],
   durationMinutes: [{ required: true, message: '请输入考试时长', trigger: 'change' }],
   displayMode: [{ required: true, message: '请选择题目显示方式', trigger: 'change' }],
+  questionOrderMode: [{ required: true, message: '请选择题目顺序', trigger: 'change' }],
   openType: [{ required: true, message: '请选择开放范围', trigger: 'change' }],
-  status: [{ required: true, message: '请选择发布状态', trigger: 'change' }],
 }
 
 const totalScore = computed(() => ruleset.value.reduce((sum, rule) => sum + ruleScore(rule), 0))
 const totalQuestionCount = computed(() => ruleset.value.reduce((sum, rule) => sum + rule.singleCount + rule.multipleCount, 0))
 
 onMounted(async () => {
-  await Promise.all([loadBanks(), loadDepartments(), loadPaperCategories(), loadExams()])
+  await Promise.all([loadBanks(), loadDepartments(), loadExams()])
 })
 
 async function loadBanks() {
@@ -305,10 +314,6 @@ async function loadBanks() {
 
 async function loadDepartments() {
   departments.value = await fetchDepartments()
-}
-
-async function loadPaperCategories() {
-  paperCategories.value = await fetchPaperCategories()
 }
 
 async function loadExams() {
@@ -330,9 +335,15 @@ function openCreateEditor() {
 }
 
 async function openEditEditor(exam: Exam) {
-  editingExam.value = exam
   resetForm()
-  form.paperId = exam.paperId
+  const detail = await fetchAdminExamDetail(exam.id)
+  await fillEditor(detail)
+  editorVisible.value = true
+}
+
+async function fillEditor(exam: Exam) {
+  editingExam.value = exam
+  currentStatus.value = exam.status
   form.title = exam.title
   form.description = exam.description || ''
   form.qualifyScore = exam.qualifyScore
@@ -342,19 +353,27 @@ async function openEditEditor(exam: Exam) {
   form.timeLimit = exam.timeLimit
   form.attemptLimit = exam.attemptLimit
   form.displayMode = exam.displayMode
-  attemptLimitMode.value = exam.attemptLimit ? 'LIMITED' : 'UNLIMITED'
-  limitedAttemptCount.value = exam.attemptLimit || 1
+  form.questionOrderMode = exam.questionOrderMode
   form.openType = exam.openType
   form.departmentIds = [...exam.departmentIds]
-  form.status = exam.status
+  attemptLimitMode.value = exam.attemptLimit ? 'LIMITED' : 'UNLIMITED'
+  limitedAttemptCount.value = exam.attemptLimit || 1
   timeRange.value = [exam.startTime, exam.endTime]
-  addRule()
-  editorVisible.value = true
+  ruleset.value = exam.rules.map((rule) => ({
+    rowId: Date.now() + rule.id,
+    bankId: rule.bankId,
+    singleCount: rule.singleCount,
+    singleScore: rule.singleScore,
+    multipleCount: rule.multipleCount,
+    multipleScore: rule.multipleScore,
+  }))
+  for (const rule of ruleset.value) {
+    await loadBankQuestions(rule.bankId)
+  }
 }
 
 function resetForm() {
   ruleset.value = []
-  form.paperId = 0
   form.title = ''
   form.description = ''
   form.qualifyScore = 0
@@ -364,11 +383,13 @@ function resetForm() {
   form.timeLimit = true
   form.attemptLimit = null
   form.displayMode = 'PAGED'
-  attemptLimitMode.value = 'UNLIMITED'
-  limitedAttemptCount.value = 1
+  form.questionOrderMode = 'FIXED'
   form.openType = 'PUBLIC'
   form.departmentIds = []
-  form.status = 'PUBLISHED'
+  form.rules = []
+  currentStatus.value = 'DRAFT'
+  attemptLimitMode.value = 'UNLIMITED'
+  limitedAttemptCount.value = 1
   timeRange.value = [form.startTime, form.endTime]
 }
 
@@ -383,7 +404,7 @@ function addRule() {
   })
 }
 
-function availableBanks(rule: ExamRule) {
+function availableBanks(rule: ExamRuleForm) {
   const selected = new Set(ruleset.value.filter((item) => item.rowId !== rule.rowId).map((item) => item.bankId))
   return banks.value.filter((bank) => !selected.has(bank.id))
 }
@@ -407,32 +428,88 @@ function bankStats(bankId: number | null) {
   }
 }
 
-function ruleScore(rule: ExamRule) {
+function ruleScore(rule: ExamRuleForm) {
   return rule.singleCount * rule.singleScore + rule.multipleCount * rule.multipleScore
 }
 
-async function submitExam() {
+async function saveDraft() {
   await formRef.value?.validate()
+  const payload = await buildPayload()
+  if (!payload) {
+    return
+  }
+  saving.value = true
+  try {
+    const saved = editingExam.value ? await updateExam(editingExam.value.id, payload) : await createExam(payload)
+    const detail = await fetchAdminExamDetail(saved.id)
+    await fillEditor(detail)
+    ElMessage.success('草稿已保存')
+    await loadExams()
+  } finally {
+    saving.value = false
+  }
+}
+
+async function publishCurrentExam() {
+  if (!editingExam.value) {
+    ElMessage.warning('请先保存草稿后再发布')
+    return
+  }
+  publishing.value = true
+  try {
+    const published = await publishExam(editingExam.value.id)
+    await fillEditor(await fetchAdminExamDetail(published.id))
+    ElMessage.success('考试已发布')
+    await loadExams()
+  } finally {
+    publishing.value = false
+  }
+}
+
+async function closeCurrentExam() {
+  if (!editingExam.value) {
+    return
+  }
+  closing.value = true
+  try {
+    const closed = await closeExam(editingExam.value.id)
+    await fillEditor(await fetchAdminExamDetail(closed.id))
+    ElMessage.success('考试已关闭')
+    await loadExams()
+  } finally {
+    closing.value = false
+  }
+}
+
+async function buildPayload(): Promise<ExamPayload | null> {
   for (const rule of ruleset.value) {
     await loadBankQuestions(rule.bankId)
   }
-  const paperQuestions = buildPaperQuestions()
-  if (paperQuestions.length === 0 || totalScore.value <= 0) {
-    ElMessage.error('请至少配置一道试题，并设置有效分值')
-    return
+  const payloadRules = ruleset.value
+    .filter((rule) => rule.bankId)
+    .map((rule) => ({
+      bankId: Number(rule.bankId),
+      singleCount: rule.singleCount,
+      singleScore: rule.singleCount === 0 ? 0 : rule.singleScore,
+      multipleCount: rule.multipleCount,
+      multipleScore: rule.multipleCount === 0 ? 0 : rule.multipleScore,
+    }))
+  if (payloadRules.length === 0) {
+    ElMessage.error('请至少添加一个题库规则')
+    return null
   }
   if (form.qualifyScore > totalScore.value) {
     ElMessage.error('及格分不能超过试卷总分')
-    return
+    return null
   }
   if (form.openType === 'DEPARTMENT' && form.departmentIds.length === 0) {
     ElMessage.error('部门开放必须选择部门')
-    return
+    return null
   }
   if (form.timeLimit) {
     if (!timeRange.value?.[0] || !timeRange.value?.[1]) {
       ElMessage.error('请选择开放时间')
-      return
+      return null
     }
     form.startTime = timeRange.value[0]
     form.endTime = timeRange.value[1]
@@ -441,53 +518,21 @@ async function submitExam() {
     form.endTime = '2099-12-31T23:59:59'
   }
   form.attemptLimit = attemptLimitMode.value === 'LIMITED' ? limitedAttemptCount.value : null
-
-  saving.value = true
-  try {
-    const paper = await createPaper({
-      categoryId: paperCategories.value[0]?.id || 1,
-      name: `${form.title} - 组卷结果`,
-      description: form.description,
-      durationMinutes: form.durationMinutes,
-      status: 'ACTIVE',
-      questions: paperQuestions,
-    })
-    const payload: ExamPayload = { ...form, paperId: paper.id }
-    if (editingExam.value) {
-      await updateExam(editingExam.value.id, payload)
-      ElMessage.success('考试已更新')
-    } else {
-      await createExam(payload)
-      ElMessage.success('考试已创建')
-    }
-    editorVisible.value = false
-    await loadExams()
-  } finally {
-    saving.value = false
+  return {
+    title: form.title,
+    description: form.description,
+    qualifyScore: form.qualifyScore,
+    startTime: form.startTime,
+    endTime: form.endTime,
+    durationMinutes: form.durationMinutes,
+    timeLimit: form.timeLimit,
+    attemptLimit: form.attemptLimit,
+    displayMode: form.displayMode,
+    questionOrderMode: form.questionOrderMode,
+    openType: form.openType,
+    departmentIds: [...form.departmentIds],
+    rules: payloadRules,
   }
-}
-
-function buildPaperQuestions(): PaperQuestionPayload[] {
-  const selected: PaperQuestionPayload[] = []
-  for (const rule of ruleset.value) {
-    if (!rule.bankId) {
-      continue
-    }
-    const questions = bankQuestions.value[rule.bankId] || []
-    selected.push(
-      ...questions
-        .filter((question) => question.type === 'SINGLE_CHOICE')
-        .slice(0, rule.singleCount)
-        .map((question) => ({ questionId: question.id, score: rule.singleScore })),
-    )
-    selected.push(
-      ...questions
-        .filter((question) => question.type === 'MULTIPLE_CHOICE')
-        .slice(0, rule.multipleCount)
-        .map((question) => ({ questionId: question.id, score: rule.multipleScore })),
-    )
-  }
-  return selected.filter((question) => question.score > 0)
 }
 
 function statusText(status: Exam['status']) {
@@ -500,6 +545,10 @@ function statusType(status: Exam['status']) {
 
 function displayModeText(displayMode: Exam['displayMode']) {
   return displayMode === 'ALL' ? '整卷一页' : '逐题显示'
+}
+
+function questionOrderText(mode: Exam['questionOrderMode']) {
+  return mode === 'RANDOM' ? '随机顺序' : '固定顺序'
 }
 </script>
 
@@ -602,7 +651,8 @@ function displayModeText(displayMode: Exam['displayMode']) {
   grid-column: 1 / -1;
 }
 
-.inline-control {
+.inline-control,
+.footer-actions {
   display: flex;
   align-items: center;
   gap: 12px;

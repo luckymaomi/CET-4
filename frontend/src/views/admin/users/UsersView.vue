@@ -4,7 +4,14 @@
       <div>
         <h1>用户管理</h1>
       </div>
-      <el-button type="primary" :icon="Plus" @click="openCreateDialog">新建用户</el-button>
+      <div class="header-actions">
+        <el-button :icon="Download" @click="downloadTemplate">下载模板</el-button>
+        <el-upload :show-file-list="false" accept=".xlsx" :before-upload="handleImport">
+          <el-button :icon="Upload">导入用户</el-button>
+        </el-upload>
+        <el-button :icon="Download" @click="exportUsers">导出用户</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreateDialog">新建用户</el-button>
+      </div>
     </header>
 
     <div class="toolbar">
@@ -18,6 +25,15 @@
       />
       <el-button :icon="Search" @click="loadUsers">搜索</el-button>
     </div>
+
+    <el-alert v-if="importResult" :type="importResult.failureCount ? 'warning' : 'success'" show-icon :closable="false">
+      <template #title>
+        导入完成：成功 {{ importResult.successCount }} 条，失败 {{ importResult.failureCount }} 条
+      </template>
+      <ul v-if="importResult.errors.length" class="import-errors">
+        <li v-for="error in importResult.errors" :key="error">{{ error }}</li>
+      </ul>
+    </el-alert>
 
     <el-table v-loading="loading" :data="users" class="data-table" border>
       <el-table-column prop="username" label="账号" min-width="140" />
@@ -88,14 +104,6 @@
             placeholder="选择部门"
           />
         </el-form-item>
-        <el-form-item :label="editingUser ? '新密码' : '密码'" prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            show-password
-            :placeholder="editingUser ? '不填写则保持原密码' : '至少 6 位'"
-          />
-        </el-form-item>
         <el-form-item label="角色" prop="roleIds">
           <el-select v-model="form.roleIds" multiple class="form-control" placeholder="选择角色">
             <el-option v-for="role in roles" :key="role.id" :label="`${role.name} (${role.code})`" :value="role.id" />
@@ -112,26 +120,30 @@
 
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { ElMessage, type FormInstance, type FormRules, type UploadRawFile } from 'element-plus'
+import { Download, Plus, Search, Upload } from '@element-plus/icons-vue'
 
 import {
   changeAdminUserStatus,
   createAdminUser,
+  downloadUserExport,
+  downloadUserImportTemplate,
   fetchDepartments,
   fetchAdminRoles,
   fetchAdminUsers,
+  importUsers,
   updateAdminUser,
   type Department,
   type AdminRole,
   type AdminUser,
+  type ExcelImportResult,
 } from '@/api/admin'
+import { downloadBlob } from '@/utils/download'
 
 interface UserForm {
   username: string
   departmentId: number | null
   displayName: string
-  password: string
   roleIds: number[]
 }
 
@@ -143,6 +155,7 @@ const loading = ref(false)
 const saving = ref(false)
 const dialogVisible = ref(false)
 const editingUser = ref<AdminUser | null>(null)
+const importResult = ref<ExcelImportResult | null>(null)
 const formRef = ref<FormInstance>()
 
 const query = reactive({
@@ -155,29 +168,12 @@ const form = reactive<UserForm>({
   username: '',
   departmentId: null,
   displayName: '',
-  password: '',
   roleIds: [],
 })
 
 const rules: FormRules<UserForm> = {
   username: [{ required: true, message: '请输入账号', trigger: 'blur' }],
   displayName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
-  password: [
-    {
-      validator: (_rule, value: string, callback) => {
-        if (!editingUser.value && !value) {
-          callback(new Error('请输入密码'))
-          return
-        }
-        if (value && value.length < 6) {
-          callback(new Error('密码至少 6 位'))
-          return
-        }
-        callback()
-      },
-      trigger: 'blur',
-    },
-  ],
   roleIds: [{ required: true, type: 'array', min: 1, message: '请选择角色', trigger: 'change' }],
 }
 
@@ -213,7 +209,6 @@ function openCreateDialog() {
   form.username = ''
   form.departmentId = null
   form.displayName = ''
-  form.password = ''
   form.roleIds = []
   dialogVisible.value = true
 }
@@ -223,7 +218,6 @@ function openEditDialog(user: AdminUser) {
   form.username = user.username
   form.departmentId = user.departmentId
   form.displayName = user.displayName
-  form.password = ''
   form.roleIds = roles.value.filter((role) => user.roles.includes(role.code)).map((role) => role.id)
   dialogVisible.value = true
 }
@@ -236,7 +230,6 @@ async function submitUser() {
       await updateAdminUser(editingUser.value.id, {
         departmentId: form.departmentId,
         displayName: form.displayName,
-        password: form.password || undefined,
         roleIds: form.roleIds,
       })
       ElMessage.success('用户已更新')
@@ -245,7 +238,6 @@ async function submitUser() {
         departmentId: form.departmentId,
         username: form.username,
         displayName: form.displayName,
-        password: form.password,
         roleIds: form.roleIds,
       })
       ElMessage.success('用户已创建')
@@ -263,7 +255,30 @@ async function toggleStatus(user: AdminUser) {
   await loadUsers()
 }
 
+async function downloadTemplate() {
+  const blob = await downloadUserImportTemplate()
+  downloadBlob(blob, '用户导入模板.xlsx')
+}
+
+async function exportUsers() {
+  const blob = await downloadUserExport()
+  downloadBlob(blob, '用户导出.xlsx')
+}
+
+async function handleImport(file: UploadRawFile) {
+  importResult.value = await importUsers(file)
+  await loadUsers()
+  return false
+}
+
 function roleName(code: string) {
   return roles.value.find((role) => role.code === code)?.name || code
 }
 </script>
+
+<style scoped>
+.import-errors {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+</style>

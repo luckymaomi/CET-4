@@ -1,6 +1,6 @@
 ﻿import { defineStore } from 'pinia'
 
-import { fetchCurrentUser, login, logout } from '@/api/auth'
+import { changePassword, fetchCurrentUser, login, logout } from '@/api/auth'
 import type { CurrentUser, LoginPayload } from '@/api/types'
 
 const TOKEN_KEY = 'kaoshi.accessToken'
@@ -55,6 +55,10 @@ export const useAuthStore = defineStore('auth', {
       }
       this.user = await fetchCurrentUser()
       localStorage.setItem(USER_KEY, JSON.stringify(this.user))
+    },
+    async changePassword(payload: { currentPassword: string; newPassword: string; confirmPassword: string }) {
+      await changePassword(payload)
+      await this.loadCurrentUser()
     },
     async logout() {
       if (this.token) {

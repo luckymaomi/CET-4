@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
 
-import { chooseSelectOption, collectConsoleIssues, downloadByButton, login } from './helpers'
+import { chooseSelectOption, collectConsoleIssues, login } from './helpers'
 
 test.describe('系统管理', () => {
-  test('导航只暴露用户可理解的系统入口', async ({ page }) => {
+  test('导航展示当前系统与考试入口', async ({ page }) => {
     const consoleIssues = collectConsoleIssues(page)
     await login(page)
 
@@ -11,8 +11,9 @@ test.describe('系统管理', () => {
     await expect(page.locator('.el-sub-menu__title').filter({ hasText: '在线考试' })).toBeVisible()
     await expect(page.locator('.el-sub-menu__title').filter({ hasText: '考试管理' })).toBeVisible()
     await expect(page.locator('.el-sub-menu__title').filter({ hasText: '系统管理' })).toBeVisible()
-    await expect(page.getByRole('menuitem', { name: '权限清单' })).toHaveCount(0)
-    await expect(page.getByRole('menuitem', { name: '菜单清单' })).toHaveCount(0)
+    await expect(page.getByRole('menuitem', { name: '用户管理' })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: '角色管理' })).toBeVisible()
+    await expect(page.getByRole('menuitem', { name: '部门管理' })).toBeVisible()
 
     expect(consoleIssues).toEqual([])
   })
@@ -59,7 +60,7 @@ test.describe('系统管理', () => {
     const username = `e2e_user_${Date.now()}`
     await userDialog.getByLabel('账号').fill(username)
     await userDialog.getByLabel('姓名').fill('浏览器用户')
-    await userDialog.getByLabel('密码').fill('password')
+    await expect(userDialog.getByLabel('密码')).toHaveCount(0)
     await chooseSelectOption(page, userDialog, '角色', '考生 (STUDENT)')
     await userDialog.getByRole('button', { name: '保存' }).click()
     await expect(page.getByText('用户已创建')).toBeVisible()
@@ -76,15 +77,12 @@ test.describe('系统管理', () => {
     expect(consoleIssues).toEqual([])
   })
 
-  test('部门管理支持模板下载、导入、新建、编辑和删除', async ({ page }) => {
+  test('部门管理支持在线新建、编码生成、编辑和删除', async ({ page }) => {
     const consoleIssues = collectConsoleIssues(page)
     await login(page)
 
     await page.getByRole('menuitem', { name: '部门管理' }).click()
     await expect(page.getByRole('heading', { name: '部门管理' })).toBeVisible()
-    const departmentTemplate = await downloadByButton(page, '下载模板')
-    await page.locator('.admin-page header input[type=file]').setInputFiles(departmentTemplate)
-    await expect(page.getByText('导入完成：成功')).toBeVisible()
     await page.getByRole('button', { name: '新建部门' }).click()
     const departmentDialog = page.getByRole('dialog', { name: '新建部门' })
     const departmentCodeInput = departmentDialog.locator('.el-form-item').filter({ hasText: '部门编码' }).locator('input')

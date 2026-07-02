@@ -1,37 +1,27 @@
-﻿# Security Policy
+# Security Policy
 
-kaoshi 处理用户身份、考试内容、作答记录、成绩数据和文件附件。安全规则从项目初始化开始生效。
+Security reports are welcome and appreciated.
 
-## 敏感信息
+## Reporting a Vulnerability
 
-以下内容不得提交到仓库：
+If you believe you have found a security vulnerability, please report it privately to the project maintainers. Do not disclose exploitable details in a public issue, pull request, discussion, or forum.
 
-- 数据库密码。
-- JWT 密钥。
-- Redis 密码。
-- 云存储密钥。
-- 管理员真实账号密码。
-- 真实考生身份信息。
-- 真实考试数据和成绩。
-- `.env`、私钥、证书和生产配置文件。
+Please include:
 
-## 安全边界
+- A clear description of the issue.
+- Steps to reproduce the behavior.
+- The affected version, commit, or environment when known.
+- The potential impact.
+- Any logs, screenshots, or proof of concept details that help confirm the issue.
 
-- 所有管理端接口必须有鉴权和权限校验。
-- 所有考试作答接口必须校验考试状态、考生身份、时间窗口和提交状态。
-- 成绩和作答记录必须按权限范围读取。
-- 文件上传必须校验类型、大小、归属和访问权限。
-- 生产环境密钥必须通过环境变量或密钥管理服务提供。
+## Handling Expectations
 
-## 漏洞报告
+Maintainers will review reports as soon as practical, assess impact, and coordinate a fix or mitigation when needed. Public disclosure should wait until maintainers have had a reasonable opportunity to respond.
 
-发现安全问题时，请通过私有渠道联系项目 owner。报告中应包含：
+## Safe Handling
 
-- 问题描述。
-- 影响范围。
-- 复现步骤。
-- 相关日志或截图。
-- 建议修复方向。
-
-不要在公开 issue 中披露可利用细节。
-
+- Do not access, modify, or delete data that does not belong to you.
+- Do not run tests against systems without permission.
+- Do not use destructive techniques.
+- Do not publish secrets, credentials, tokens, private keys, or personal data.
+- Stop testing and report promptly if you encounter sensitive information.

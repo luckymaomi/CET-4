@@ -1,6 +1,7 @@
 package com.kaoshi.auth;
 
 import com.kaoshi.auth.dto.CurrentUserResponse;
+import com.kaoshi.auth.dto.ChangePasswordRequest;
 import com.kaoshi.auth.dto.LoginRequest;
 import com.kaoshi.auth.dto.LoginResponse;
 import com.kaoshi.common.api.ApiResponse;
@@ -34,6 +35,15 @@ public class AuthController {
 
     @PostMapping("/logout")
     public ApiResponse<Void> logout() {
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/change-password")
+    public ApiResponse<Void> changePassword(
+            @AuthenticationPrincipal AuthUser user,
+            @Valid @RequestBody ChangePasswordRequest request
+    ) {
+        authService.changePassword(user, request);
         return ApiResponse.ok();
     }
 }

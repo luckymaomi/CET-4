@@ -10,7 +10,6 @@ public record UserCreateRequest(
         Long departmentId,
         @NotBlank @Size(max = 64) String username,
         @NotBlank @Size(max = 64) String displayName,
-        @NotBlank @Size(min = 6, max = 128) String password,
         @NotEmpty List<Long> roleIds
 ) {
 }

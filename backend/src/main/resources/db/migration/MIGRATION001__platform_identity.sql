@@ -20,6 +20,7 @@ create table users (
   display_name varchar(64) not null,
   password_hash varchar(120) not null,
   status varchar(20) not null,
+  must_change_password bit not null default false,
   created_at datetime not null default current_timestamp,
   updated_at datetime not null default current_timestamp on update current_timestamp,
   deleted_at datetime null,
@@ -93,20 +94,19 @@ values
   (1, null, '默认组织', 'DEFAULT', '系统初始化部门', 'ACTIVE'),
   (2, 1, '考试中心', 'EXAM_CENTER', '负责考试组织与题库维护', 'ACTIVE');
 
-insert into users (id, department_id, username, display_name, password_hash, status)
-values (1, 1, 'admin', '系统管理员', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE');
+insert into users (id, department_id, username, display_name, password_hash, status, must_change_password)
+values (1, 1, 'admin', '系统管理员', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', false);
 
 insert into roles (id, code, name, description)
 values
   (1, 'ADMIN', '系统管理员', '平台初始化管理员'),
-  (2, 'EXAM_MANAGER', '考务管理员', '维护考试、试卷、题库和成绩'),
+  (2, 'EXAM_MANAGER', '考务管理员', '维护考试、题库和成绩'),
   (3, 'STUDENT', '考生', '参加考试和查看成绩');
 
 insert into permissions (id, code, name, description)
 values
   (1, 'system:admin', '系统管理', '访问系统管理能力'),
   (2, 'exam:manage', '考试管理', '维护考试发布和考务任务'),
-  (3, 'paper:manage', '内部组卷', '维护考试创建时的内部组卷结果'),
   (4, 'question:manage', '题库管理', '维护题库和试题'),
   (5, 'exam:take', '参加考试', '进入考试端作答'),
   (6, 'result:view', '成绩查看', '查看成绩和作答结果');

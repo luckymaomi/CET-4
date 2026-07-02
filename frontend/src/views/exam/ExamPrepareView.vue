@@ -3,7 +3,7 @@
     <header class="admin-page__header">
       <div>
         <h1>{{ exam?.title || '准备考试' }}</h1>
-        <p>{{ exam?.paperName || '确认考试信息后开始作答。' }}</p>
+        <p>{{ exam ? `${exam.questionCount} 题 / ${exam.totalScore} 分` : '确认考试信息后开始作答。' }}</p>
       </div>
       <div class="header-actions">
         <el-button @click="router.push({ name: 'exam-home' })">返回考试中心</el-button>

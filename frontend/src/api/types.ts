@@ -9,6 +9,7 @@ export interface CurrentUser {
   id: number
   username: string
   displayName: string
+  mustChangePassword: boolean
   roles: string[]
   permissions: string[]
 }
