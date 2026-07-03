@@ -163,7 +163,7 @@ describe('exam business api', () => {
     await startExam(1)
     await saveExamAnswer(1, { questionId: 2, selectedLabels: ['A'] })
     await submitExam(1, [{ questionId: 2, selectedLabels: ['A'] }])
-    await fetchAdminResults()
+    await fetchAdminResults({ examId: 1 })
     await fetchAdminResultDetail(9)
     await fetchMyExamResults()
     await fetchMyExamResultDetail(9)
@@ -174,7 +174,7 @@ describe('exam business api', () => {
     expect(apiClient.post).toHaveBeenCalledWith('/api/exam/1/submit', {
       answers: [{ questionId: 2, selectedLabels: ['A'] }],
     })
-    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/results')
+    expect(apiClient.get).toHaveBeenCalledWith('/api/admin/results', { params: { examId: 1 } })
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/results/9')
     expect(apiClient.get).toHaveBeenCalledWith('/api/exam/results')
     expect(apiClient.get).toHaveBeenCalledWith('/api/exam/results/9')

@@ -183,10 +183,14 @@ export interface ExamResult {
   examId: number
   examTitle: string
   userId: number
+  username: string | null
+  userName: string | null
+  departmentName: string | null
   totalScore: number
   obtainedScore: number
   correctCount: number
   questionCount: number
+  passed: boolean
   submittedAt: string
 }
 
@@ -332,8 +336,8 @@ export async function closeExam(id: number): Promise<Exam> {
   return response.data.data
 }
 
-export async function fetchAdminResults(): Promise<ExamResult[]> {
-  const response = await apiClient.get<ApiResponse<ExamResult[]>>('/api/admin/results')
+export async function fetchAdminResults(params?: { examId?: number }): Promise<ExamResult[]> {
+  const response = await apiClient.get<ApiResponse<ExamResult[]>>('/api/admin/results', { params })
   return response.data.data
 }
 

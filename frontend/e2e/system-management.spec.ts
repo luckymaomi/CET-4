@@ -16,6 +16,9 @@ test.describe('系统管理', () => {
     await expect(page.getByRole('menuitem', { name: '部门管理' })).toBeVisible()
     await expect(page.getByRole('menuitem', { name: '题库管理' })).toBeVisible()
     await expect(page.getByRole('menuitem', { name: '试题管理' })).toHaveCount(0)
+    const menuTexts = await page.locator('li.el-menu-item').allTextContents()
+    expect(menuTexts.indexOf('角色管理')).toBeLessThan(menuTexts.indexOf('部门管理'))
+    expect(menuTexts.indexOf('部门管理')).toBeLessThan(menuTexts.indexOf('用户管理'))
 
     expect(consoleIssues).toEqual([])
   })
@@ -52,6 +55,7 @@ test.describe('系统管理', () => {
 
     await page.getByRole('menuitem', { name: '用户管理' }).click()
     await expect(page.getByRole('heading', { name: '用户管理' })).toBeVisible()
+    await expect(page.getByRole('columnheader', { name: '创建时间' })).toHaveCount(0)
     await page.getByPlaceholder('搜索账号或姓名').fill('admin')
     await page.getByRole('button', { name: '搜索' }).click()
     await expect(page.getByRole('cell', { name: 'admin' })).toBeVisible()

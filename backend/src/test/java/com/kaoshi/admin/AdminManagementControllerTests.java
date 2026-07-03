@@ -48,7 +48,7 @@ class AdminManagementControllerTests {
     void userManagementSupportsPageCreateUpdateAndStatus() throws Exception {
         String token = adminToken();
 
-        mockMvc.perform(get("/api/admin/users?page=1&size=10")
+        mockMvc.perform(get("/api/admin/users?page=1&size=10&keyword=admin")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.records[0].username").value("admin"))
@@ -222,7 +222,9 @@ class AdminManagementControllerTests {
         mockMvc.perform(get("/api/admin/menus")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[1].title").value("用户管理"));
+                .andExpect(jsonPath("$.data[1].title").value("角色管理"))
+                .andExpect(jsonPath("$.data[2].title").value("部门管理"))
+                .andExpect(jsonPath("$.data[3].title").value("用户管理"));
     }
 
     @Test

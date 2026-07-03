@@ -61,9 +61,10 @@
           <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column fixed="right" label="操作" width="260">
+      <el-table-column fixed="right" label="操作" width="310">
         <template #default="{ row }: { row: Exam }">
           <el-button link type="primary" @click="openEditEditor(row)">编辑</el-button>
+          <el-button link type="primary" @click="openResults(row)">成绩</el-button>
           <el-button link type="primary" @click="copyCurrentExam(row)">复制</el-button>
           <el-button link type="primary" @click="downloadCurrentExam(row)">下载</el-button>
           <el-button v-if="row.status === 'PUBLISHED'" link type="warning" @click="revokeCurrentExam(row)">撤销发布</el-button>
@@ -136,6 +137,7 @@
             <h2>题目明细</h2>
             <div class="header-actions">
               <el-button @click="generatePaperQuestions">按规则生成</el-button>
+              <el-button :disabled="ruleset.length === 0" @click="generatePaperQuestions">更新试卷</el-button>
               <el-button :disabled="paperQuestions.length === 0" @click="previewVisible = true">预览试卷</el-button>
             </div>
           </div>
@@ -303,6 +305,50 @@
         </article>
       </div>
     </el-dialog>
+
+    <el-drawer v-model="resultsVisible" :title="`${selectedResultExam?.title || '考试'} - 成绩`" size="min(920px, 92vw)">
+      <div class="result-drawer">
+        <header class="result-summary">
+          <div>
+            <span>考试人数</span>
+            <strong>{{ examResults.length }}</strong>
+          </div>
+          <div>
+            <span>通过人数</span>
+            <strong>{{ passedResultCount }}</strong>
+          </div>
+          <div>
+            <span>平均分</span>
+            <strong>{{ averageResultScore }}</strong>
+          </div>
+        </header>
+        <el-table v-loading="resultsLoading" :data="examResults" border class="data-table">
+          <el-table-column prop="userName" label="姓名" min-width="120" />
+          <el-table-column prop="username" label="账号" min-width="130" />
+          <el-table-column label="部门" min-width="160">
+            <template #default="{ row }: { row: ExamResult }">{{ row.departmentName || '未分配' }}</template>
+          </el-table-column>
+          <el-table-column label="成绩" width="120">
+            <template #default="{ row }: { row: ExamResult }">{{ row.obtainedScore }} / {{ row.totalScore }}</template>
+          </el-table-column>
+          <el-table-column label="考试结果" width="110">
+            <template #default="{ row }: { row: ExamResult }">
+              <el-tag :type="row.passed ? 'success' : 'danger'" effect="plain">{{ row.passed ? '通过' : '未通过' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="提交时间" width="180">
+            <template #default="{ row }: { row: ExamResult }">{{ formatDateTime(row.submittedAt) }}</template>
+          </el-table-column>
+          <el-table-column fixed="right" label="操作" width="110">
+            <template #default="{ row }: { row: ExamResult }">
+              <el-button link type="primary" @click="router.push({ name: 'admin-result-detail', params: { resultId: row.id } })">
+                查看详情
+              </el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </el-drawer>
   </section>
 </template>
 
@@ -310,6 +356,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 
 import { fetchDepartments, type Department } from '@/api/admin'
 import {
@@ -319,6 +366,7 @@ import {
   downloadExamPaper,
   fetchAdminExamDetail,
   fetchAdminExams,
+  fetchAdminResults,
   fetchQuestionBanks,
   fetchQuestions,
   publishExam,
@@ -327,6 +375,7 @@ import {
   type Exam,
   type ExamPaperQuestion,
   type ExamPayload,
+  type ExamResult,
   type Question,
   type QuestionBank,
 } from '@/api/exam-business'
@@ -362,6 +411,7 @@ const questionOrderOptions = [
   { label: '随机顺序', value: 'RANDOM' },
 ]
 
+const router = useRouter()
 const exams = ref<Exam[]>([])
 const banks = ref<QuestionBank[]>([])
 const departments = ref<Department[]>([])
@@ -369,6 +419,7 @@ const bankQuestions = ref<Record<number, Question[]>>({})
 const ruleset = ref<ExamRuleForm[]>([])
 const paperQuestions = ref<ExamPaperQuestionForm[]>([])
 const pickerQuestions = ref<Question[]>([])
+const examResults = ref<ExamResult[]>([])
 const paperStale = ref(false)
 const total = ref(0)
 const loading = ref(false)
@@ -376,9 +427,12 @@ const saving = ref(false)
 const publishing = ref(false)
 const closing = ref(false)
 const pickerLoading = ref(false)
+const resultsLoading = ref(false)
 const previewVisible = ref(false)
+const resultsVisible = ref(false)
 const editorVisible = ref(false)
 const editingExam = ref<Exam | null>(null)
+const selectedResultExam = ref<Exam | null>(null)
 const currentStatus = ref<Exam['status']>('DRAFT')
 const formRef = ref<FormInstance>()
 const timeRange = ref<[string, string]>(['2026-01-01T00:00:00', '2026-12-31T23:59:59'])
@@ -424,6 +478,14 @@ const totalQuestionCount = computed(() => {
     return paperQuestions.value.length
   }
   return ruleset.value.reduce((sum, rule) => sum + rule.singleCount + rule.multipleCount, 0)
+})
+const passedResultCount = computed(() => examResults.value.filter((result) => result.passed).length)
+const averageResultScore = computed(() => {
+  if (examResults.value.length === 0) {
+    return '-'
+  }
+  const value = examResults.value.reduce((sum, result) => sum + Number(result.obtainedScore), 0) / examResults.value.length
+  return value.toFixed(1)
 })
 
 onMounted(async () => {
@@ -778,6 +840,17 @@ async function revokeCurrentExam(exam: Exam) {
   await loadExams()
 }
 
+async function openResults(exam: Exam) {
+  selectedResultExam.value = exam
+  resultsVisible.value = true
+  resultsLoading.value = true
+  try {
+    examResults.value = await fetchAdminResults({ examId: exam.id })
+  } finally {
+    resultsLoading.value = false
+  }
+}
+
 async function buildPayload(): Promise<ExamPayload | null> {
   for (const rule of ruleset.value) {
     await loadBankQuestions(rule.bankId)
@@ -989,6 +1062,36 @@ function questionTypeText(type: Question['type']) {
   overflow: auto;
 }
 
+.result-drawer {
+  display: grid;
+  gap: 14px;
+}
+
+.result-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.result-summary div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--ks-border);
+  border-radius: var(--ks-radius);
+  background: var(--ks-panel-muted);
+}
+
+.result-summary span {
+  color: var(--ks-text-muted);
+  font-size: 13px;
+}
+
+.result-summary strong {
+  font-size: 18px;
+}
+
 .preview-question {
   display: grid;
   gap: 8px;
@@ -1039,6 +1142,10 @@ function questionTypeText(type: Question['type']) {
   .rule-fields,
   .publish-form-grid,
   .manual-picker__toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .result-summary {
     grid-template-columns: 1fr;
   }
 

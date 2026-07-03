@@ -343,6 +343,55 @@ class ExamBusinessFlowTests {
     }
 
     @Test
+    void draftPaperQuestionsKeepSnapshotUntilPaperIsExplicitlyRegenerated() throws Exception {
+        String token = adminToken();
+        long bankId = createBank(token, "草稿快照题库");
+        long questionId = createSingleChoiceQuestion(token, bankId);
+
+        String draftResponse = createDraftExam(token, bankId, """
+                "title": "草稿快照考试",
+                "description": "用于验证题库变更不会魔法更新试卷",
+                "qualifyScore": 0,
+                "startTime": "2026-01-01T00:00:00",
+                "endTime": "2026-12-31T23:59:59",
+                "durationMinutes": 20,
+                "timeLimit": false,
+                "attemptLimit": null,
+                "displayMode": "ALL",
+                "questionOrderMode": "FIXED",
+                "openType": "PUBLIC"
+                """);
+        long examId = objectMapper.readTree(draftResponse).at("/data/id").asLong();
+
+        updateQuestionToDifferentCorrectAnswer(token, bankId, questionId);
+
+        mockMvc.perform(get("/api/admin/exams/{examId}", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paperQuestions[0].stem").value("Which word means fast?"));
+
+        publishExam(token, examId);
+
+        mockMvc.perform(post("/api/exam/{examId}/start", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.questions[0].stem").value("Which word means fast?"));
+
+        mockMvc.perform(post("/api/exam/{examId}/submit", examId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "answers": [
+                                    {"questionId": %d, "selectedLabels": ["B"]}
+                                  ]
+                                }
+                                """.formatted(questionId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.obtainedScore").value(10));
+    }
+
+    @Test
     void examPaperOperationsSupportCopyDownloadAndRevokeBoundary() throws Exception {
         String token = adminToken();
 

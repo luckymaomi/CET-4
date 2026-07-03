@@ -92,10 +92,24 @@ create table login_audits (
 insert into departments (id, parent_id, name, code, description, status)
 values
   (1, null, '默认组织', 'DEFAULT', '系统初始化部门', 'ACTIVE'),
-  (2, 1, '考试中心', 'EXAM_CENTER', '负责考试组织与题库维护', 'ACTIVE');
+  (2, 1, '考试中心', 'EXAM_CENTER', '负责考试组织与题库维护', 'ACTIVE'),
+  (3, 1, '英语教研组', 'ENGLISH_GROUP', '负责英语题库与教学安排', 'ACTIVE'),
+  (4, 1, '高一一班', 'GRADE_1_CLASS_1', '考试样本班级', 'ACTIVE'),
+  (5, 1, '高一二班', 'GRADE_1_CLASS_2', '考试样本班级', 'ACTIVE');
 
 insert into users (id, department_id, username, display_name, password_hash, status, must_change_password)
-values (1, 1, 'admin', '系统管理员', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', false);
+values
+  (1, 1, 'admin', '系统管理员', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', false),
+  (2, 4, 'candidate001', '周翔', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (3, 4, 'candidate002', '肖宗恒', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (4, 4, 'candidate003', '傅安', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (5, 5, 'candidate004', '周峻', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (6, 5, 'candidate005', '吴捷', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (7, 4, 'candidate006', '李杰', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (8, 5, 'candidate007', '陈宁', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (9, 4, 'candidate008', '赵明', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (10, 5, 'candidate009', '孙雨', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true),
+  (11, 4, 'candidate010', '钱晨', '$2a$10$KSY7KAawfe6xK/gp4bXt2erxEFQe0w4kSVfgM1/ZVJobedbZrQZq6', 'ACTIVE', true);
 
 insert into roles (id, code, name, description)
 values
@@ -111,7 +125,19 @@ values
   (5, 'exam:take', '参加考试', '进入考试端作答'),
   (6, 'result:view', '成绩查看', '查看成绩和作答结果');
 
-insert into user_roles (user_id, role_id) values (1, 1);
+insert into user_roles (user_id, role_id)
+values
+  (1, 1),
+  (2, 3),
+  (3, 3),
+  (4, 3),
+  (5, 3),
+  (6, 3),
+  (7, 3),
+  (8, 3),
+  (9, 3),
+  (10, 3),
+  (11, 3);
 
 insert into role_permissions (role_id, permission_id)
 select 1, id from permissions;

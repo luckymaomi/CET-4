@@ -140,10 +140,45 @@ public interface ExamMapper {
     void deleteDraftQuestions(@Param("examId") Long examId);
 
     @Insert("""
-            insert into exam_draft_questions (exam_id, source_question_id, type, score, sort_order)
-            values (#{examId}, #{sourceQuestionId}, #{type}, #{score}, #{sortOrder})
+            insert into exam_draft_questions (exam_id, source_question_id, bank_id, bank_name, type, stem, analysis, score, sort_order)
+            values (#{examId}, #{sourceQuestionId}, #{bankId}, #{bankName}, #{type}, #{stem}, #{analysis}, #{score}, #{sortOrder})
             """)
+    @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertDraftQuestion(Map<String, Object> question);
+
+    @Delete("""
+            delete from exam_draft_attachments
+            where draft_question_id in (
+              select id from exam_draft_questions where exam_id = #{examId}
+            )
+            """)
+    void deleteDraftAttachments(@Param("examId") Long examId);
+
+    @Delete("""
+            delete from exam_draft_options
+            where draft_question_id in (
+              select id from exam_draft_questions where exam_id = #{examId}
+            )
+            """)
+    void deleteDraftOptions(@Param("examId") Long examId);
+
+    @Insert("""
+            insert into exam_draft_options (draft_question_id, option_label, content, is_correct, sort_order)
+            select #{draftQuestionId}, option_label, content, is_correct, sort_order
+            from question_options
+            where question_id = #{sourceQuestionId}
+            order by sort_order, id
+            """)
+    void copyDraftOptionsFromSource(@Param("draftQuestionId") Long draftQuestionId, @Param("sourceQuestionId") Long sourceQuestionId);
+
+    @Insert("""
+            insert into exam_draft_attachments (draft_question_id, file_name, file_url, media_type, sort_order)
+            select #{draftQuestionId}, file_name, file_url, media_type, sort_order
+            from question_attachments
+            where question_id = #{sourceQuestionId}
+            order by sort_order, id
+            """)
+    void copyDraftAttachmentsFromSource(@Param("draftQuestionId") Long draftQuestionId, @Param("sourceQuestionId") Long sourceQuestionId);
 
     @Select("""
             select edq.id,
@@ -152,14 +187,13 @@ public interface ExamMapper {
                    edq.type,
                    edq.score,
                    edq.sort_order as sortOrder,
-                   q.bank_id as bankId,
-                   qb.name as bankName,
-                   q.stem,
-                   q.analysis,
+                   edq.bank_id as bankId,
+                   edq.bank_name as bankName,
+                   edq.stem,
+                   edq.analysis,
                    q.status
             from exam_draft_questions edq
-            join questions q on q.id = edq.source_question_id
-            join question_banks qb on qb.id = q.bank_id
+            left join questions q on q.id = edq.source_question_id
             where edq.exam_id = #{examId}
             order by edq.sort_order, edq.id
             """)
@@ -186,6 +220,22 @@ public interface ExamMapper {
             order by sort_order, id
             """)
     List<Map<String, Object>> findSourceOptions(@Param("questionId") Long questionId);
+
+    @Select("""
+            select id, option_label as label, content, is_correct as correct, sort_order as sortOrder
+            from exam_draft_options
+            where draft_question_id = #{draftQuestionId}
+            order by sort_order, id
+            """)
+    List<Map<String, Object>> findDraftOptions(@Param("draftQuestionId") Long draftQuestionId);
+
+    @Select("""
+            select id, file_name as fileName, file_url as fileUrl, media_type as mediaType, sort_order as sortOrder
+            from exam_draft_attachments
+            where draft_question_id = #{draftQuestionId}
+            order by sort_order, id
+            """)
+    List<Map<String, Object>> findDraftAttachments(@Param("draftQuestionId") Long draftQuestionId);
 
     @Delete("""
             delete from exam_published_attachments
@@ -214,14 +264,16 @@ public interface ExamMapper {
     void insertPublishedQuestion(Map<String, Object> question);
 
     @Select("""
-            select q.id as questionId,
-                   q.type,
-                   q.stem,
-                   q.analysis,
+            select edq.id as draftQuestionId,
+                   edq.source_question_id as questionId,
+                   edq.type,
+                   edq.stem,
+                   edq.analysis,
                    edq.score,
-                   edq.sort_order as sortOrder
+                   edq.sort_order as sortOrder,
+                   q.status
             from exam_draft_questions edq
-            join questions q on q.id = edq.source_question_id
+            left join questions q on q.id = edq.source_question_id
             where edq.exam_id = #{examId}
               and q.status = 'ACTIVE'
             order by edq.sort_order, edq.id
@@ -231,20 +283,20 @@ public interface ExamMapper {
     @Insert("""
             insert into exam_published_options (published_question_id, option_label, content, is_correct, sort_order)
             select #{publishedQuestionId}, option_label, content, is_correct, sort_order
-            from question_options
-            where question_id = #{sourceQuestionId}
+            from exam_draft_options
+            where draft_question_id = #{draftQuestionId}
             order by sort_order, id
             """)
-    void copyPublishedOptions(@Param("publishedQuestionId") Long publishedQuestionId, @Param("sourceQuestionId") Long sourceQuestionId);
+    void copyPublishedOptions(@Param("publishedQuestionId") Long publishedQuestionId, @Param("draftQuestionId") Long draftQuestionId);
 
     @Insert("""
             insert into exam_published_attachments (published_question_id, file_name, file_url, media_type, sort_order)
             select #{publishedQuestionId}, file_name, file_url, media_type, sort_order
-            from question_attachments
-            where question_id = #{sourceQuestionId}
+            from exam_draft_attachments
+            where draft_question_id = #{draftQuestionId}
             order by sort_order, id
             """)
-    void copyPublishedAttachments(@Param("publishedQuestionId") Long publishedQuestionId, @Param("sourceQuestionId") Long sourceQuestionId);
+    void copyPublishedAttachments(@Param("publishedQuestionId") Long publishedQuestionId, @Param("draftQuestionId") Long draftQuestionId);
 
     @Select("""
             select coalesce(sum(score), 0)
@@ -458,26 +510,45 @@ public interface ExamMapper {
     void insertResult(Map<String, Object> result);
 
     @Select("""
-            select r.*, e.title as examTitle
+            select r.*, e.title as examTitle,
+                   u.username as username,
+                   u.display_name as userName,
+                   d.name as departmentName,
+                   case when r.obtained_score >= e.qualify_score then true else false end as passed
             from exam_results r
             join exams e on e.id = r.exam_id
+            join users u on u.id = r.user_id
+            left join departments d on d.id = u.department_id
+            where #{examId} is null or r.exam_id = #{examId}
             order by r.id desc
             """)
-    List<Map<String, Object>> findResults();
+    List<Map<String, Object>> findResults(@Param("examId") Long examId);
 
     @Select("""
-            select r.*, e.title as examTitle
+            select r.*, e.title as examTitle,
+                   u.username as username,
+                   u.display_name as userName,
+                   d.name as departmentName,
+                   case when r.obtained_score >= e.qualify_score then true else false end as passed
             from exam_results r
             join exams e on e.id = r.exam_id
+            join users u on u.id = r.user_id
+            left join departments d on d.id = u.department_id
             where r.user_id = #{userId}
             order by r.id desc
             """)
     List<Map<String, Object>> findResultsByUser(@Param("userId") Long userId);
 
     @Select("""
-            select r.*, e.title as examTitle
+            select r.*, e.title as examTitle,
+                   u.username as username,
+                   u.display_name as userName,
+                   d.name as departmentName,
+                   case when r.obtained_score >= e.qualify_score then true else false end as passed
             from exam_results r
             join exams e on e.id = r.exam_id
+            join users u on u.id = r.user_id
+            left join departments d on d.id = u.department_id
             where r.id = #{resultId}
             """)
     Map<String, Object> findResultById(@Param("resultId") Long resultId);

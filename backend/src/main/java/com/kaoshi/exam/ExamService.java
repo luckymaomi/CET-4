@@ -270,16 +270,20 @@ public class ExamService {
                 exam.getId(),
                 exam.getTitle(),
                 longValue(value(attempt, "userId")),
+                null,
+                null,
+                null,
                 totalScore,
                 obtainedScore,
                 correctCount,
                 questions.size(),
+                obtainedScore.compareTo(exam.getQualifyScore()) >= 0,
                 submittedAt
         );
     }
 
-    public List<ExamResultResponse> adminResults() {
-        return examMapper.findResults().stream().map(this::toResultResponse).toList();
+    public List<ExamResultResponse> adminResults(Long examId) {
+        return examMapper.findResults(examId).stream().map(this::toResultResponse).toList();
     }
 
     public List<ExamResultResponse> userResults(Long userId) {
@@ -383,22 +387,15 @@ public class ExamService {
             Long sourceQuestionId = value(source, "questionId") == null
                     ? longValue(value(source, "sourceQuestionId"))
                     : longValue(value(source, "questionId"));
-            Map<String, Object> question = new HashMap<>();
-            question.put("examId", targetExamId);
-            question.put("sourceQuestionId", sourceQuestionId);
-            question.put("type", stringValue(value(source, "type")));
-            question.put("score", decimalValue(value(source, "score")));
-            question.put("sortOrder", intValue(value(source, "sortOrder")));
-            examMapper.insertDraftQuestion(question);
+            insertDraftQuestionFromSource(targetExamId, sourceQuestionId, decimalValue(value(source, "score")), intValue(value(source, "sortOrder")));
         }
     }
 
     private List<String> paperExportRow(Map<String, Object> row) {
         boolean publishedRow = row.containsKey("sourceQuestionId") || row.containsKey("source_question_id") || row.containsKey("SOURCE_QUESTION_ID");
-        Long questionId = value(row, "questionId") == null ? longValue(value(row, "sourceQuestionId")) : longValue(value(row, "questionId"));
         List<Map<String, Object>> options = publishedRow
                 ? examMapper.findPublishedOptions(longValue(value(row, "id")))
-                : examMapper.findSourceOptions(questionId);
+                : examMapper.findDraftOptions(longValue(value(row, "id")));
         return List.of(
                 String.valueOf(intValue(value(row, "sortOrder"))),
                 safeString(value(row, "bankName")),
@@ -542,6 +539,8 @@ public class ExamService {
     }
 
     private void replaceDraftQuestions(Long examId, ExamSaveRequest request) {
+        examMapper.deleteDraftAttachments(examId);
+        examMapper.deleteDraftOptions(examId);
         examMapper.deleteDraftQuestions(examId);
         List<ExamPaperQuestionRequest> paperQuestions = request.paperQuestions();
         if (paperQuestions != null && !paperQuestions.isEmpty()) {
@@ -564,13 +563,7 @@ public class ExamService {
             if (source == null || !"ACTIVE".equals(stringValue(value(source, "status")))) {
                 throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目不存在或未启用");
             }
-            Map<String, Object> question = new HashMap<>();
-            question.put("examId", examId);
-            question.put("sourceQuestionId", request.questionId());
-            question.put("type", stringValue(value(source, "type")));
-            question.put("score", request.score());
-            question.put("sortOrder", sort);
-            examMapper.insertDraftQuestion(question);
+            insertDraftQuestionFromSource(examId, request.questionId(), request.score(), sort);
             sort += 10;
         }
     }
@@ -591,16 +584,31 @@ public class ExamService {
             return sort;
         }
         for (Map<String, Object> source : examMapper.findQuestionsForPublish(bankId, type, count)) {
-            Map<String, Object> question = new HashMap<>();
-            question.put("examId", examId);
-            question.put("sourceQuestionId", longValue(value(source, "questionId")));
-            question.put("type", stringValue(value(source, "type")));
-            question.put("score", score);
-            question.put("sortOrder", sort);
-            examMapper.insertDraftQuestion(question);
+            insertDraftQuestionFromSource(examId, longValue(value(source, "questionId")), score, sort);
             sort += 10;
         }
         return sort;
+    }
+
+    private void insertDraftQuestionFromSource(Long examId, Long sourceQuestionId, BigDecimal score, int sortOrder) {
+        Map<String, Object> source = examMapper.findSourceQuestion(sourceQuestionId);
+        if (source == null || !"ACTIVE".equals(stringValue(value(source, "status")))) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目不存在或未启用");
+        }
+        Map<String, Object> question = new HashMap<>();
+        question.put("examId", examId);
+        question.put("sourceQuestionId", sourceQuestionId);
+        question.put("bankId", longValue(value(source, "bankId")));
+        question.put("bankName", stringValue(value(source, "bankName")));
+        question.put("type", stringValue(value(source, "type")));
+        question.put("stem", stringValue(value(source, "stem")));
+        question.put("analysis", stringValue(value(source, "analysis")));
+        question.put("score", score);
+        question.put("sortOrder", sortOrder);
+        examMapper.insertDraftQuestion(question);
+        Long draftQuestionId = longValue(value(question, "id"));
+        examMapper.copyDraftOptionsFromSource(draftQuestionId, sourceQuestionId);
+        examMapper.copyDraftAttachmentsFromSource(draftQuestionId, sourceQuestionId);
     }
 
     private void rebuildPublishedSnapshot(Long examId) {
@@ -618,8 +626,8 @@ public class ExamService {
             question.put("sortOrder", intValue(value(source, "sortOrder")));
             examMapper.insertPublishedQuestion(question);
             Long publishedQuestionId = longValue(value(question, "id"));
-            examMapper.copyPublishedOptions(publishedQuestionId, longValue(value(source, "questionId")));
-            examMapper.copyPublishedAttachments(publishedQuestionId, longValue(value(source, "questionId")));
+            examMapper.copyPublishedOptions(publishedQuestionId, longValue(value(source, "draftQuestionId")));
+            examMapper.copyPublishedAttachments(publishedQuestionId, longValue(value(source, "draftQuestionId")));
         }
     }
 
@@ -852,10 +860,14 @@ public class ExamService {
                 longValue(value(row, "examId")),
                 stringValue(value(row, "examTitle")),
                 longValue(value(row, "userId")),
+                stringValue(value(row, "username")),
+                stringValue(value(row, "userName")),
+                stringValue(value(row, "departmentName")),
                 decimalValue(value(row, "totalScore")),
                 decimalValue(value(row, "obtainedScore")),
                 intValue(value(row, "correctCount")),
                 intValue(value(row, "questionCount")),
+                booleanValue(value(row, "passed")),
                 dateTimeValue(value(row, "submittedAt"))
         );
     }
@@ -868,10 +880,14 @@ public class ExamService {
                 longValue(value(row, "examId")),
                 stringValue(value(row, "examTitle")),
                 longValue(value(row, "userId")),
+                stringValue(value(row, "username")),
+                stringValue(value(row, "userName")),
+                stringValue(value(row, "departmentName")),
                 decimalValue(value(row, "totalScore")),
                 decimalValue(value(row, "obtainedScore")),
                 intValue(value(row, "correctCount")),
                 intValue(value(row, "questionCount")),
+                booleanValue(value(row, "passed")),
                 dateTimeValue(value(row, "submittedAt")),
                 examMapper.findResultQuestions(attemptId).stream()
                         .map(this::toResultQuestionResponse)

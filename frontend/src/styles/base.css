@@ -60,7 +60,11 @@ button {
   border-radius: 8px;
   background: var(--ks-primary);
   color: #fff;
-  font-weight: 700;
+  font-size: 20px;
+}
+
+.brand-mark .el-icon {
+  font-size: 21px;
 }
 
 .brand small {

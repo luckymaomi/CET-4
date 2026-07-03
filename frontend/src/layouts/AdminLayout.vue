@@ -2,7 +2,9 @@
   <el-container class="shell">
     <el-aside class="sidebar" width="232px">
       <div class="brand">
-        <span class="brand-mark">K</span>
+        <span class="brand-mark">
+          <el-icon><Reading /></el-icon>
+        </span>
         <div>
           <strong>kaoshi</strong>
           <small>考试管理平台</small>
@@ -37,9 +39,9 @@
             <el-icon><Setting /></el-icon>
             <span>系统管理</span>
           </template>
-          <el-menu-item index="/sys/users">用户管理</el-menu-item>
           <el-menu-item index="/sys/roles">角色管理</el-menu-item>
           <el-menu-item index="/sys/departments">部门管理</el-menu-item>
+          <el-menu-item index="/sys/users">用户管理</el-menu-item>
         </el-sub-menu>
       </el-menu>
     </el-aside>
@@ -93,6 +95,7 @@ import {
   Collection,
   EditPen,
   Grid,
+  Reading,
   Setting,
 } from '@element-plus/icons-vue'
 import { computed, ref, watch } from 'vue'

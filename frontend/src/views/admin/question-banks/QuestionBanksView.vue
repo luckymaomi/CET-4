@@ -239,7 +239,11 @@
                     </a>
                   </div>
                 </div>
-                <el-button :icon="Delete" circle @click="removeAttachment(index)" />
+                <div class="attachment-actions">
+                  <el-button size="small" :disabled="index === 0" @click="moveAttachment(index, -1)">上移</el-button>
+                  <el-button size="small" :disabled="index === questionForm.attachments.length - 1" @click="moveAttachment(index, 1)">下移</el-button>
+                  <el-button :icon="Delete" circle @click="removeAttachment(index)" />
+                </div>
               </div>
             </div>
           </div>
@@ -693,6 +697,15 @@ function removeAttachment(index: number) {
   questionForm.attachments.splice(index, 1)
 }
 
+function moveAttachment(index: number, offset: number) {
+  const target = index + offset
+  if (target < 0 || target >= questionForm.attachments.length) {
+    return
+  }
+  const [current] = questionForm.attachments.splice(index, 1)
+  questionForm.attachments.splice(target, 0, current)
+}
+
 function questionTypeText(type: Question['type']) {
   return type === 'SINGLE_CHOICE' ? '单选' : '多选'
 }
@@ -884,6 +897,13 @@ function nextCategorySortOrder() {
   min-width: 0;
   align-items: center;
   gap: 8px;
+}
+
+.attachment-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
 }
 
 .attachment-thumb {

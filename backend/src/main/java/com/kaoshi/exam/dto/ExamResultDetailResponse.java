@@ -10,10 +10,14 @@ public record ExamResultDetailResponse(
         Long examId,
         String examTitle,
         Long userId,
+        String username,
+        String userName,
+        String departmentName,
         BigDecimal totalScore,
         BigDecimal obtainedScore,
         Integer correctCount,
         Integer questionCount,
+        Boolean passed,
         LocalDateTime submittedAt,
         List<ExamResultQuestionResponse> questions
 ) {

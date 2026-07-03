@@ -57,7 +57,6 @@
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="createdAt" label="创建时间" width="180" />
       <el-table-column fixed="right" label="操作" width="220">
         <template #default="{ row }: { row: AdminUser }">
           <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>

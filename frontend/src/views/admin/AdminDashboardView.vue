@@ -77,18 +77,18 @@ const modules = [
   },
   {
     title: '系统管理',
-    summary: '管理员维护部门、用户和角色权限，让人员和考试开放范围保持一致。',
+    summary: '管理员先维护角色权限，再维护部门结构，最后维护用户归属。',
     icon: Setting,
     actions: [
-      { label: '用户管理', path: '/sys/users' },
       { label: '角色管理', path: '/sys/roles' },
       { label: '部门管理', path: '/sys/departments' },
+      { label: '用户管理', path: '/sys/users' },
     ],
   },
 ]
 
 const workflows = [
-  '先在系统管理维护部门、用户和角色。',
+  '先在系统管理维护角色权限、部门结构和用户归属。',
   '再在题库管理维护题库和试题，富媒体附件在试题编辑页上传或填写 URL。',
   '最后在考试管理按题库规则组卷，配置考试时长、可考次数、题目显示方式和开放范围。',
 ]

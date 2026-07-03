@@ -79,10 +79,7 @@ public class AdminUserService {
                         new ExcelWorkbooks.SheetData(
                                 "用户导入",
                                 List.of("账号", "姓名", "部门", "角色", "状态"),
-                                List.of(
-                                        List.of("student001", "学生一", "默认部门", "普通用户", "启用"),
-                                        List.of("teacher001", "教师一", "英语教研组", "管理员", "启用")
-                                )
+                                userTemplateRows()
                         ),
                         new ExcelWorkbooks.SheetData(
                                 "字典清单",
@@ -272,7 +269,7 @@ public class AdminUserService {
 
     private List<List<String>> userDictionaryRows() {
         List<List<String>> rows = new ArrayList<>();
-        departmentMapper.findAll().forEach(department -> rows.add(List.of(
+        activeDepartments().forEach(department -> rows.add(List.of(
                 "部门",
                 department.getName(),
                 department.getCode(),
@@ -287,6 +284,33 @@ public class AdminUserService {
         rows.add(List.of("状态", "启用", "ACTIVE", "导入创建启用账号"));
         rows.add(List.of("状态", "禁用", "DISABLED", "模板列出可用状态；导入创建只允许启用账号"));
         return rows;
+    }
+
+    private List<List<String>> userTemplateRows() {
+        List<Department> departments = activeDepartments();
+        List<Role> roles = adminRoleMapper.findAll();
+        String firstDepartment = departments.isEmpty() ? "" : departments.get(0).getName();
+        String secondDepartment = departments.size() > 1 ? departments.get(1).getName() : firstDepartment;
+        String studentRole = roles.stream()
+                .filter(role -> "STUDENT".equals(role.getCode()))
+                .findFirst()
+                .map(Role::getName)
+                .orElse(roles.isEmpty() ? "" : roles.get(0).getName());
+        String managerRole = roles.stream()
+                .filter(role -> "EXAM_MANAGER".equals(role.getCode()))
+                .findFirst()
+                .map(Role::getName)
+                .orElse(studentRole);
+        return List.of(
+                List.of("student001", "学生一", firstDepartment, studentRole, "启用"),
+                List.of("teacher001", "教师一", secondDepartment, managerRole, "启用")
+        );
+    }
+
+    private List<Department> activeDepartments() {
+        return departmentMapper.findAll().stream()
+                .filter(department -> "ACTIVE".equals(department.getStatus()))
+                .toList();
     }
 
     private List<String> exportRow(UserAccount user) {
