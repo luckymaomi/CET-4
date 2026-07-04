@@ -145,26 +145,27 @@ class ExamBusinessFlowTests {
     }
 
     @Test
-    void seededExamUsesLocalAudioPngAndJpgAttachments() throws Exception {
+    void seededCet4ExamUsesQuestionSetAudioAttachment() throws Exception {
         String token = adminToken();
 
         mockMvc.perform(post("/api/exam/{examId}/start", 1)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.title").value("2015年12月英语四级真题第一卷"))
+                .andExpect(jsonPath("$.data.questions.length()").value(67))
                 .andExpect(jsonPath("$.data.questions[*].attachments[*].fileUrl").value(hasItems(
-                        "/local-assets/dog-wolf-friendship.mp3",
-                        "/local-assets/noun-example.png",
-                        "/local-assets/improve-card.jpg",
-                        "/local-assets/practice-chart.png"
+                        "/local-assets/cet4/2015-12/set-1/201512cet4-01.mp3"
                 )))
-                .andExpect(jsonPath("$.data.questions[*].attachments[*].mediaType").value(hasItems("AUDIO", "IMAGE")));
+                .andExpect(jsonPath("$.data.questions[*].attachments[*].mediaType").value(hasItems("AUDIO")));
     }
 
     @Test
     void limitedAttemptExamRejectsRestartAfterSubmittedLimit() throws Exception {
         String token = adminToken();
+        long bankId = createBank(token, "限定次数题库");
+        long questionId = createSingleChoiceQuestion(token, bankId);
 
-        String examResponse = createDraftExam(token, 1, """
+        String examResponse = createDraftExam(token, bankId, """
                 "title": "限定次数考试",
                 "description": "用于验证可考次数",
                 "qualifyScore": 0,
@@ -190,10 +191,10 @@ class ExamBusinessFlowTests {
                         .content("""
                                 {
                                   "answers": [
-                                    {"questionId": 1, "selectedLabels": ["B"]}
+                                    {"questionId": %d, "selectedLabels": ["B"]}
                                   ]
                                 }
-                                """))
+                                """.formatted(questionId)))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/exam/{examId}/start", examId)
@@ -204,8 +205,13 @@ class ExamBusinessFlowTests {
     @Test
     void examDisplayAndRandomOrderAreConfiguredByAdminAndPersistedInAttempt() throws Exception {
         String token = adminToken();
+        long bankId = createBank(token, "整卷随机题库");
+        createSingleChoiceQuestion(token, bankId);
+        createSingleChoiceQuestion(token, bankId);
+        createMultipleChoiceQuestion(token, bankId);
+        createMultipleChoiceQuestion(token, bankId);
 
-        String examResponse = createDraftExam(token, 1, 2, 2, """
+        String examResponse = createDraftExam(token, bankId, 2, 2, """
                 "title": "整卷显示考试",
                 "description": "用于验证题目显示配置",
                 "qualifyScore": 0,
@@ -246,8 +252,10 @@ class ExamBusinessFlowTests {
     @Test
     void answerDraftIsSavedToBackendAndRestoredWhenExamRestarts() throws Exception {
         String token = adminToken();
+        long bankId = createBank(token, "答案保存题库");
+        long questionId = createSingleChoiceQuestion(token, bankId);
 
-        String examResponse = createDraftExam(token, 1, """
+        String examResponse = createDraftExam(token, bankId, """
                 "title": "答案保存读回考试",
                 "description": "用于验证作答防丢",
                 "qualifyScore": 0,
@@ -274,10 +282,10 @@ class ExamBusinessFlowTests {
                         .content("""
                                 {
                                   "answers": [
-                                    {"questionId": 1, "selectedLabels": ["B"]}
+                                    {"questionId": %d, "selectedLabels": ["B"]}
                                   ]
                                 }
-                                """))
+                                """.formatted(questionId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.questions[0].selectedLabels[0]").value("B"));
 
@@ -436,6 +444,9 @@ class ExamBusinessFlowTests {
     @Test
     void manualPaperQuestionOrderIsSavedAndUsedByPublishedSnapshot() throws Exception {
         String token = adminToken();
+        long bankId = createBank(token, "手工排序题库");
+        long singleQuestionId = createSingleChoiceQuestion(token, bankId);
+        long multipleQuestionId = createMultipleChoiceQuestion(token, bankId);
 
         String response = mockMvc.perform(post("/api/admin/exams")
                         .header("Authorization", "Bearer " + token)
@@ -456,7 +467,7 @@ class ExamBusinessFlowTests {
                                   "departmentIds": [],
                                   "rules": [
                                     {
-                                      "bankId": 1,
+                                      "bankId": %d,
                                       "singleCount": 1,
                                       "singleScore": 3,
                                       "multipleCount": 1,
@@ -464,14 +475,14 @@ class ExamBusinessFlowTests {
                                     }
                                   ],
                                   "paperQuestions": [
-                                    {"questionId": 2, "score": 7, "sortOrder": 10},
-                                    {"questionId": 1, "score": 3, "sortOrder": 20}
+                                    {"questionId": %d, "score": 7, "sortOrder": 10},
+                                    {"questionId": %d, "score": 3, "sortOrder": 20}
                                   ]
                                 }
-                                """))
+                                """.formatted(bankId, multipleQuestionId, singleQuestionId)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.paperQuestions[0].questionId").value(2))
-                .andExpect(jsonPath("$.data.paperQuestions[1].questionId").value(1))
+                .andExpect(jsonPath("$.data.paperQuestions[0].questionId").value(multipleQuestionId))
+                .andExpect(jsonPath("$.data.paperQuestions[1].questionId").value(singleQuestionId))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -486,9 +497,9 @@ class ExamBusinessFlowTests {
         mockMvc.perform(post("/api/exam/{examId}/start", examId)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.questions[0].questionId").value(2))
+                .andExpect(jsonPath("$.data.questions[0].questionId").value(multipleQuestionId))
                 .andExpect(jsonPath("$.data.questions[0].score").value(7))
-                .andExpect(jsonPath("$.data.questions[1].questionId").value(1))
+                .andExpect(jsonPath("$.data.questions[1].questionId").value(singleQuestionId))
                 .andExpect(jsonPath("$.data.questions[1].score").value(3));
     }
 
@@ -544,8 +555,10 @@ class ExamBusinessFlowTests {
     @Test
     void examPaperOperationsSupportCopyDownloadAndRevokeBoundary() throws Exception {
         String token = adminToken();
+        long bankId = createBank(token, "试卷操作题库");
+        createSingleChoiceQuestion(token, bankId);
 
-        String response = createDraftExam(token, 1, """
+        String response = createDraftExam(token, bankId, """
                 "title": "试卷操作考试",
                 "description": "用于验证复制下载撤销",
                 "qualifyScore": 0,
@@ -600,8 +613,10 @@ class ExamBusinessFlowTests {
     @Test
     void examDeleteAndDraftEditRespectAttemptLifecycleBoundaries() throws Exception {
         String token = adminToken();
+        long bankId = createBank(token, "生命周期边界题库");
+        createSingleChoiceQuestion(token, bankId);
 
-        String draftResponse = createDraftExam(token, 1, """
+        String draftResponse = createDraftExam(token, bankId, """
                 "title": "可删除草稿考试",
                 "description": "用于验证草稿删除",
                 "qualifyScore": 0,
@@ -623,7 +638,7 @@ class ExamBusinessFlowTests {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isNotFound());
 
-        String publishedResponse = createDraftExam(token, 1, """
+        String publishedResponse = createDraftExam(token, bankId, """
                 "title": "发布后改草稿考试",
                 "description": "用于验证发布快照清理",
                 "qualifyScore": 0,
@@ -658,7 +673,7 @@ class ExamBusinessFlowTests {
                                   "departmentIds": [],
                                   "rules": [
                                     {
-                                      "bankId": 1,
+                                      "bankId": %d,
                                       "singleCount": 1,
                                       "singleScore": 10,
                                       "multipleCount": 0,
@@ -668,7 +683,7 @@ class ExamBusinessFlowTests {
                                     }
                                   ]
                                 }
-                                """))
+                                """.formatted(bankId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andExpect(jsonPath("$.data.title").value("发布后改回草稿"));
@@ -702,7 +717,7 @@ class ExamBusinessFlowTests {
                                   "departmentIds": [],
                                   "rules": [
                                     {
-                                      "bankId": 1,
+                                      "bankId": %d,
                                       "singleCount": 1,
                                       "singleScore": 10,
                                       "multipleCount": 0,
@@ -712,7 +727,7 @@ class ExamBusinessFlowTests {
                                     }
                                   ]
                                 }
-                                """))
+                                """.formatted(bankId)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value(containsString("已有作答或成绩记录")));
 
@@ -730,8 +745,10 @@ class ExamBusinessFlowTests {
     @Test
     void serverLocksAttemptWhenDurationHasExpired() throws Exception {
         String token = adminToken();
+        long bankId = createBank(token, "限时锁定题库");
+        long questionId = createSingleChoiceQuestion(token, bankId);
 
-        String examResponse = createDraftExam(token, 1, """
+        String examResponse = createDraftExam(token, bankId, """
                 "title": "服务端限时考试",
                 "description": "用于验证考试时长",
                 "qualifyScore": 0,
@@ -763,10 +780,10 @@ class ExamBusinessFlowTests {
                         .content("""
                                 {
                                   "answers": [
-                                    {"questionId": 1, "selectedLabels": ["B"]}
+                                    {"questionId": %d, "selectedLabels": ["B"]}
                                   ]
                                 }
-                                """))
+                                """.formatted(questionId)))
                 .andExpect(status().isConflict());
 
         mockMvc.perform(post("/api/exam/{examId}/start", examId)
@@ -779,10 +796,10 @@ class ExamBusinessFlowTests {
                         .content("""
                                 {
                                   "answers": [
-                                    {"questionId": 1, "selectedLabels": ["B"]}
+                                    {"questionId": %d, "selectedLabels": ["B"]}
                                   ]
                                 }
-                                """))
+                                """.formatted(questionId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.obtainedScore").value(0));
 
@@ -934,7 +951,7 @@ class ExamBusinessFlowTests {
                 "file",
                 "questions.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                questionWorkbook("英语基础题库", "AC")
+                questionWorkbook("2015年12月英语四级真题第一卷", "AC")
         );
         mockMvc.perform(multipart("/api/admin/questions/import")
                         .file(file)
@@ -949,7 +966,7 @@ class ExamBusinessFlowTests {
                 .andExpect(jsonPath("$.data.records[0].stem").value("Excel import listening question"))
                 .andExpect(jsonPath("$.data.records[0].attachments.length()").value(0));
 
-        mockMvc.perform(get("/api/admin/question-banks?page=1&size=20&keyword=英语基础题库")
+        mockMvc.perform(get("/api/admin/question-banks?page=1&size=20&keyword=2015年12月英语四级真题第一卷")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.records[0].questionCount").value(greaterThanOrEqualTo(1)))
@@ -965,7 +982,7 @@ class ExamBusinessFlowTests {
                 "file",
                 "questions-invalid.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                questionWorkbook("英语基础题库", "A,C")
+                questionWorkbook("2015年12月英语四级真题第一卷", "A,C")
         );
         mockMvc.perform(multipart("/api/admin/questions/import")
                         .file(invalidFile)
@@ -1045,6 +1062,35 @@ class ExamBusinessFlowTests {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.type").value("WRITING"))
                 .andExpect(jsonPath("$.data.options.length()").value(0))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response).at("/data/id").asLong();
+    }
+
+    private long createMultipleChoiceQuestion(String token, long bankId) throws Exception {
+        String response = mockMvc.perform(post("/api/admin/questions")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bankId": %d,
+                                  "type": "MULTIPLE_CHOICE",
+                                  "stem": "Which words are language skills?",
+                                  "analysis": "Listening and speaking are language skills.",
+                                  "difficulty": "HARD",
+                                  "status": "ACTIVE",
+                                  "options": [
+                                    {"label": "A", "content": "listening", "correct": true},
+                                    {"label": "B", "content": "speaking", "correct": true},
+                                    {"label": "C", "content": "sleeping", "correct": false},
+                                    {"label": "D", "content": "walking", "correct": false}
+                                  ],
+                                  "attachments": []
+                                }
+                                """.formatted(bankId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.type").value("MULTIPLE_CHOICE"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();

@@ -67,7 +67,7 @@ class AdminManagementControllerTests {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.username").value("teacher"))
-                .andExpect(jsonPath("$.data.departmentName").value("考试中心"))
+                .andExpect(jsonPath("$.data.departmentName").value("四级考生"))
                 .andExpect(jsonPath("$.data.roles[0]").value("EXAM_MANAGER"))
                 .andReturn()
                 .getResponse()
@@ -235,7 +235,7 @@ class AdminManagementControllerTests {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].name").value("默认组织"))
-                .andExpect(jsonPath("$.data[0].children[0].name").value("考试中心"));
+                .andExpect(jsonPath("$.data[0].children[0].name").value("四级考生"));
 
         String parentResponse = mockMvc.perform(post("/api/admin/departments")
                         .header("Authorization", "Bearer " + token)
@@ -301,7 +301,7 @@ class AdminManagementControllerTests {
             Row row = sheet.createRow(1);
             row.createCell(0).setCellValue(username);
             row.createCell(1).setCellValue("Excel 学员");
-            row.createCell(2).setCellValue("考试中心");
+            row.createCell(2).setCellValue("四级考生");
             row.createCell(3).setCellValue("EXAM_MANAGER");
             row.createCell(4).setCellValue("启用");
             workbook.write(output);

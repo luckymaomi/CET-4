@@ -14,173 +14,64 @@
 
       <section class="exam-workspace">
         <main class="question-stack">
-          <article v-if="session.displayMode === 'PAGED' && currentQuestion" :key="currentQuestion.questionId" class="question-panel">
-            <div class="question-title">
-              <strong>{{ currentIndex + 1 }}. {{ currentQuestion.stem }}</strong>
-              <div class="question-title__meta">
-                <el-tag effect="plain">{{ questionTypeText(currentQuestion.type) }}</el-tag>
-                <el-tag>{{ currentQuestion.score }} 分</el-tag>
-              </div>
-            </div>
-
-            <div v-if="currentQuestion.attachments.length" class="question-media">
-              <template v-for="attachment in currentQuestion.attachments" :key="attachment.id">
-                <img
-                  v-if="attachment.mediaType === 'IMAGE'"
-                  :src="attachment.fileUrl"
-                  :alt="attachment.fileName"
-                  class="question-media__image"
-                />
-                <audio v-else-if="attachment.mediaType === 'AUDIO'" :src="attachment.fileUrl" controls class="question-media__audio" />
-                <el-link v-else :href="attachment.fileUrl" target="_blank">{{ attachment.fileName }}</el-link>
+          <template v-if="session.displayMode === 'PAGED' && currentQuestion">
+            <ExamQuestionPanel
+              :key="currentQuestion.questionId"
+              :question="currentQuestion"
+              :index="currentIndex"
+              :single-answers="singleAnswers"
+              :multiple-answers="multipleAnswers"
+              :text-answers="textAnswers"
+              :disabled="submitting || submitted"
+              @schedule-save="scheduleSave"
+              @save-immediately="saveImmediately"
+            >
+              <template #footer>
+                <div class="question-nav">
+                  <el-button :disabled="currentIndex === 0" @click="previousQuestion">上一题</el-button>
+                  <el-button
+                    v-if="currentIndex < session.questions.length - 1"
+                    type="primary"
+                    @click="nextQuestion"
+                  >
+                    下一题
+                  </el-button>
+                  <el-button v-else type="primary" :loading="submitting" :disabled="submitted" @click="confirmSubmit">
+                    提交试卷
+                  </el-button>
+                </div>
               </template>
-            </div>
-
-            <el-checkbox-group
-              v-if="currentQuestion.type === 'MULTIPLE_CHOICE'"
-              v-model="multipleAnswers[currentQuestion.questionId]"
-              class="answer-options"
-              :disabled="submitting || submitted"
-              @change="scheduleSave(currentQuestion)"
-            >
-              <el-checkbox v-for="option in currentQuestion.options" :key="option.id" :value="option.label" border>
-                {{ option.label }}. {{ option.content }}
-              </el-checkbox>
-            </el-checkbox-group>
-            <el-radio-group
-              v-else-if="currentQuestion.type === 'SINGLE_CHOICE'"
-              v-model="singleAnswers[currentQuestion.questionId]"
-              class="answer-options"
-              :disabled="submitting || submitted"
-              @change="scheduleSave(currentQuestion)"
-            >
-              <el-radio v-for="option in currentQuestion.options" :key="option.id" :value="option.label" border>
-                {{ option.label }}. {{ option.content }}
-              </el-radio>
-            </el-radio-group>
-            <el-input
-              v-else-if="currentQuestion.type === 'WRITING'"
-              v-model="textAnswers[currentQuestion.questionId]"
-              type="textarea"
-              :rows="8"
-              maxlength="5000"
-              show-word-limit
-              resize="vertical"
-              placeholder="请输入写作答案"
-              :disabled="submitting || submitted"
-              @input="scheduleSave(currentQuestion)"
-              @blur="saveImmediately(currentQuestion)"
-            />
-
-            <div class="question-nav">
-              <el-button :disabled="currentIndex === 0" @click="previousQuestion">上一题</el-button>
-              <el-button
-                v-if="currentIndex < session.questions.length - 1"
-                type="primary"
-                @click="nextQuestion"
-              >
-                下一题
-              </el-button>
-              <el-button v-else type="primary" :loading="submitting" :disabled="submitted" @click="confirmSubmit">
-                提交试卷
-              </el-button>
-            </div>
-          </article>
+            </ExamQuestionPanel>
+          </template>
 
           <template v-else-if="session.displayMode === 'ALL'">
-            <article
+            <ExamQuestionPanel
               v-for="(question, index) in session.questions"
-              :id="`question-${question.questionId}`"
               :key="question.questionId"
-              class="question-panel"
-            >
-              <div class="question-title">
-                <strong>{{ index + 1 }}. {{ question.stem }}</strong>
-                <div class="question-title__meta">
-                  <el-tag effect="plain">{{ questionTypeText(question.type) }}</el-tag>
-                  <el-tag>{{ question.score }} 分</el-tag>
-                </div>
-              </div>
-
-              <div v-if="question.attachments.length" class="question-media">
-                <template v-for="attachment in question.attachments" :key="attachment.id">
-                  <img
-                    v-if="attachment.mediaType === 'IMAGE'"
-                    :src="attachment.fileUrl"
-                    :alt="attachment.fileName"
-                    class="question-media__image"
-                  />
-                  <audio v-else-if="attachment.mediaType === 'AUDIO'" :src="attachment.fileUrl" controls class="question-media__audio" />
-                  <el-link v-else :href="attachment.fileUrl" target="_blank">{{ attachment.fileName }}</el-link>
-                </template>
-              </div>
-
-              <el-checkbox-group
-                v-if="question.type === 'MULTIPLE_CHOICE'"
-                v-model="multipleAnswers[question.questionId]"
-                class="answer-options"
-                :disabled="submitting || submitted"
-                @change="scheduleSave(question)"
-              >
-                <el-checkbox v-for="option in question.options" :key="option.id" :value="option.label" border>
-                  {{ option.label }}. {{ option.content }}
-                </el-checkbox>
-              </el-checkbox-group>
-              <el-radio-group
-                v-else-if="question.type === 'SINGLE_CHOICE'"
-                v-model="singleAnswers[question.questionId]"
-                class="answer-options"
-                :disabled="submitting || submitted"
-                @change="scheduleSave(question)"
-              >
-                <el-radio v-for="option in question.options" :key="option.id" :value="option.label" border>
-                  {{ option.label }}. {{ option.content }}
-                </el-radio>
-              </el-radio-group>
-              <el-input
-                v-else-if="question.type === 'WRITING'"
-                v-model="textAnswers[question.questionId]"
-                type="textarea"
-                :rows="8"
-                maxlength="5000"
-                show-word-limit
-                resize="vertical"
-                placeholder="请输入写作答案"
-                :disabled="submitting || submitted"
-                @input="scheduleSave(question)"
-                @blur="saveImmediately(question)"
-              />
-            </article>
+              :panel-id="`question-${question.questionId}`"
+              :question="question"
+              :index="index"
+              :single-answers="singleAnswers"
+              :multiple-answers="multipleAnswers"
+              :text-answers="textAnswers"
+              :disabled="submitting || submitted"
+              @schedule-save="scheduleSave"
+              @save-immediately="saveImmediately"
+            />
             <div class="question-submit-row">
               <el-button type="primary" :loading="submitting" :disabled="submitted" @click="confirmSubmit">提交试卷</el-button>
             </div>
           </template>
         </main>
 
-        <aside class="answer-card">
-          <div class="answer-card__header">
-            <strong>答题卡</strong>
-            <span>{{ unansweredCount }} 未答</span>
-          </div>
-          <div v-for="group in groupedQuestions" :key="group.type" class="answer-card__section">
-            <p>{{ group.title }}</p>
-            <div class="answer-card__grid">
-              <button
-                v-for="question in group.questions"
-                :key="question.questionId"
-                class="answer-card__item"
-                :class="{
-                  'answer-card__item--answered': isAnswered(question),
-                  'answer-card__item--current': currentQuestion?.questionId === question.questionId,
-                }"
-                type="button"
-                @click="selectQuestion(question.questionId)"
-              >
-                {{ questionGlobalIndex(question.questionId) + 1 }}
-              </button>
-            </div>
-          </div>
-        </aside>
+        <ExamAnswerCard
+          :groups="groupedQuestions"
+          :questions="session.questions"
+          :unanswered-count="unansweredCount"
+          :current-question-id="currentQuestion?.questionId"
+          :is-answered="isAnswered"
+          @select-question="selectQuestion"
+        />
       </section>
     </template>
   </section>
@@ -191,6 +82,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+import ExamAnswerCard from '@/components/exam/session/ExamAnswerCard.vue'
+import ExamQuestionPanel from '@/components/exam/session/ExamQuestionPanel.vue'
 import { useAnswerSnapshotSaver } from '@/composables/use-answer-snapshot-saver'
 import { saveExamAnswers, startExam, submitExam, type ExamQuestion, type ExamSession } from '@/api/exam-business'
 import {
@@ -202,7 +95,6 @@ import {
   type SingleAnswerMap,
   type TextAnswerMap,
 } from '@/utils/exam-session'
-import { questionTypeText } from '@/utils/question-types'
 
 const route = useRoute()
 const router = useRouter()
@@ -236,9 +128,9 @@ const answeredCount = computed(() => countAnsweredQuestions(session.value?.quest
 const unansweredCount = computed(() => Math.max(0, (session.value?.questions.length ?? 0) - answeredCount.value))
 const hasActiveAttempt = computed(() => Boolean(session.value && !submitted.value))
 const saveStatusText = answerSaver.saveStatusText
-const groupedQuestions = computed<QuestionGroup[]>(() => {
+const groupedQuestions = computed<AnswerCardGroup[]>(() => {
   const questions = session.value?.questions ?? []
-  const groups: QuestionGroup[] = [
+  const groups: AnswerCardGroup[] = [
     {
       type: 'SINGLE_CHOICE',
       title: '单选题',
@@ -258,7 +150,7 @@ const groupedQuestions = computed<QuestionGroup[]>(() => {
   return groups.filter((group) => group.questions.length > 0)
 })
 
-interface QuestionGroup {
+interface AnswerCardGroup {
   type: ExamQuestion['type']
   title: string
   questions: ExamQuestion[]
@@ -496,54 +388,6 @@ function preventUnload(event: BeforeUnloadEvent) {
   color: var(--ks-warning);
 }
 
-.question-media {
-  display: grid;
-  gap: 12px;
-  margin: 12px 0 16px;
-}
-
-.question-title__meta {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.question-media__image {
-  width: min(100%, 720px);
-  max-height: 360px;
-  object-fit: contain;
-  border: 1px solid var(--ks-border);
-  border-radius: var(--ks-radius);
-  background: var(--ks-panel-muted);
-}
-
-.question-media__audio {
-  width: min(100%, 720px);
-}
-
-.answer-options {
-  display: grid;
-  gap: 10px;
-}
-
-.answer-options :deep(.el-checkbox),
-.answer-options :deep(.el-radio) {
-  width: 100%;
-  height: auto;
-  margin: 0;
-  padding: 12px;
-  white-space: normal;
-}
-
-.answer-options :deep(.el-checkbox__label),
-.answer-options :deep(.el-radio__label) {
-  min-width: 0;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
 .question-nav {
   display: flex;
   flex-wrap: wrap;
@@ -558,80 +402,9 @@ function preventUnload(event: BeforeUnloadEvent) {
   padding: 4px 0 16px;
 }
 
-.answer-card {
-  position: sticky;
-  top: 92px;
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--ks-border);
-  border-radius: var(--ks-radius);
-  background: var(--ks-panel);
-}
-
-.answer-card__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.answer-card__header span {
-  color: var(--ks-text-muted);
-  font-size: 13px;
-}
-
-.answer-card__section {
-  display: grid;
-  gap: 8px;
-}
-
-.answer-card__section p {
-  margin: 0;
-  color: var(--ks-text-muted);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.answer-card__grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-}
-
-.answer-card__item {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border: 1px solid var(--ks-border);
-  border-radius: 6px;
-  background: var(--ks-panel-muted);
-  color: var(--ks-text-muted);
-  cursor: pointer;
-}
-
-.answer-card__item--answered {
-  border-color: var(--ks-success);
-  background: #ecfdf3;
-  color: #027a48;
-}
-
-.answer-card__item--current {
-  border-color: var(--ks-primary);
-  background: var(--ks-primary-soft);
-  color: var(--ks-primary);
-  font-weight: 700;
-}
-
 @media (max-width: 900px) {
   .exam-workspace {
     grid-template-columns: 1fr;
-  }
-
-  .answer-card {
-    position: static;
   }
 }
 

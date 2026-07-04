@@ -24,253 +24,93 @@
     </el-alert>
 
     <div class="question-workbench">
-      <aside class="tree-pane">
-        <div class="pane-title">
-          <strong>题库树</strong>
-          <div class="pane-title__actions">
-            <span>{{ banks.length }} 个题库 / {{ bankQuestionTotal }} 题</span>
-            <el-button size="small" :icon="Plus" @click="openCreateCategoryDialog">新建分类</el-button>
-          </div>
-        </div>
-        <div class="bank-search">
-          <el-input v-model.trim="bankKeyword" clearable placeholder="搜索题库或分类" @keyup.enter="loadBanks" />
-          <el-button :icon="Search" @click="loadBanks">搜索</el-button>
-        </div>
-        <el-tree
-          ref="bankTreeRef"
-          v-loading="bankLoading"
-          :data="bankTree"
-          node-key="key"
-          default-expand-all
-          highlight-current
-          :expand-on-click-node="false"
-          @node-click="selectBankNode"
-        >
-          <template #default="{ data }: { data: BankTreeNode }">
-            <div class="bank-node" :class="{ 'bank-node--category': data.type === 'category' }">
-              <div class="bank-node__main">
-                <span class="entity-name">{{ data.label }}</span>
-                <span v-if="data.type === 'bank'" class="muted-text">
-                  {{ data.questionCount }} 题 · 单选 {{ data.singleChoiceCount }} · 多选 {{ data.multipleChoiceCount }} · 写作 {{ data.writingCount }}
-                </span>
-                <span v-else class="muted-text">{{ data.children.length }} 个题库</span>
-              </div>
-              <div class="bank-node__actions">
-                <template v-if="data.type === 'category' && data.categoryId">
-                  <el-button link type="primary" size="small" @click.stop="openCreateBankDialog(data.categoryId)">新建题库</el-button>
-                  <el-button link type="primary" size="small" @click.stop="openEditCategoryDialog(data.categoryId)">编辑</el-button>
-                  <el-button link type="danger" size="small" @click.stop="deleteCategory(data.categoryId)">删除</el-button>
-                </template>
-                <el-tag v-else size="small" effect="plain" :type="data.status === 'ACTIVE' ? 'success' : 'info'">
-                  {{ data.status === 'ACTIVE' ? '启用' : '禁用' }}
-                </el-tag>
-              </div>
-            </div>
-          </template>
-        </el-tree>
-      </aside>
+      <QuestionBankTreePane
+        ref="bankTreeRef"
+        v-model:keyword="bankKeyword"
+        :tree="bankTree"
+        :loading="bankLoading"
+        :bank-count="banks.length"
+        :question-total="bankQuestionTotal"
+        @search="loadBanks"
+        @select-node="selectBankNode"
+        @create-category="openCreateCategoryDialog"
+        @create-bank="openCreateBankDialog"
+        @edit-category="openEditCategoryDialog"
+        @delete-category="deleteCategory"
+      />
 
-      <main class="question-pane">
-        <section class="selected-bank">
-          <div class="entity-stack">
-            <span class="muted-text">当前题库</span>
-            <h2>{{ selectedBank?.name || selectedCategory?.name || '全部题库' }}</h2>
-            <span class="muted-text">
-              {{ selectedBank ? `${selectedBank.categoryName} · ${selectedBank.questionCount} 题` : selectedCategory ? '当前选中分类，可在该分类下新建题库' : '选择左侧题库后可维护该题库试题' }}
-            </span>
-          </div>
-          <div class="header-actions">
-            <el-button v-if="selectedBank" @click="openEditBankDialog(selectedBank)">编辑题库</el-button>
-            <el-button v-if="selectedCategory && !selectedBank" @click="openEditCategoryDialog(selectedCategory.id)">编辑分类</el-button>
-            <el-button type="primary" :disabled="banks.length === 0" @click="openCreateQuestionDialog">新建试题</el-button>
-          </div>
-        </section>
-
-        <div class="toolbar">
-          <el-input v-model.trim="query.keyword" clearable placeholder="搜索题干或题库" class="toolbar__search" @keyup.enter="loadQuestions" />
-          <el-button :icon="Search" @click="loadQuestions">搜索</el-button>
-          <el-button v-if="selectedBankId" @click="clearSelectedBank">查看全部题库</el-button>
-        </div>
-
-        <el-table v-loading="loading" :data="questions" class="data-table" border>
-          <el-table-column prop="stem" label="题干" min-width="260" show-overflow-tooltip />
-          <el-table-column prop="bankName" label="题库" width="160" />
-          <el-table-column label="题型" width="110">
-            <template #default="{ row }: { row: Question }">{{ questionTypeText(row.type) }}</template>
-          </el-table-column>
-          <el-table-column label="答案" min-width="140">
-            <template #default="{ row }: { row: Question }">
-              <span v-if="!questionTypeMeta(row.type).optionBased" class="muted-text">主观阅卷</span>
-              <template v-else>
-                <el-tag v-for="option in row.options.filter((item) => item.correct)" :key="option.id" class="answer-tag">
-                  {{ option.label }}
-                </el-tag>
-              </template>
-            </template>
-          </el-table-column>
-          <el-table-column label="状态" width="90">
-            <template #default="{ row }: { row: Question }">
-              <el-tag :type="row.status === 'ACTIVE' ? 'success' : 'info'" effect="plain">
-                {{ row.status === 'ACTIVE' ? '启用' : '禁用' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column fixed="right" label="操作" width="120">
-            <template #default="{ row }: { row: Question }">
-              <el-button link type="primary" @click="openEditQuestionDialog(row)">编辑</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <div class="pagination-row">
-          <el-pagination
-            v-model:current-page="query.page"
-            v-model:page-size="query.size"
-            :total="total"
-            layout="total, prev, pager, next"
-            @current-change="loadQuestions"
-          />
-        </div>
-      </main>
+      <QuestionListPane
+        :selected-bank="selectedBank"
+        :selected-category="selectedCategory"
+        :selected-bank-id="selectedBankId"
+        :bank-count="banks.length"
+        :questions="questions"
+        :loading="loading"
+        :total="total"
+        :query="query"
+        @search="loadQuestions"
+        @clear-selection="clearSelectedBank"
+        @edit-bank="openEditBankDialog"
+        @edit-category="openEditCategoryDialog"
+        @create-question="openCreateQuestionDialog"
+        @edit-question="openEditQuestionDialog"
+      />
     </div>
 
-    <el-dialog v-model="categoryDialogVisible" :title="editingCategory ? '编辑分类' : '新建分类'" width="480px">
-      <el-form ref="categoryFormRef" :model="categoryForm" :rules="categoryRules" label-width="92px">
-        <el-form-item label="名称" prop="name">
-          <el-input v-model.trim="categoryForm.name" maxlength="64" />
-        </el-form-item>
-        <el-form-item label="说明" prop="description">
-          <el-input v-model.trim="categoryForm.description" type="textarea" :rows="3" maxlength="255" />
-        </el-form-item>
-        <el-form-item label="排序" prop="sortOrder">
-          <el-input-number v-model="categoryForm.sortOrder" :min="0" :max="9999" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="categoryDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="categorySaving" @click="submitCategory">保存</el-button>
-      </template>
-    </el-dialog>
+    <QuestionCategoryDialog
+      ref="categoryFormRef"
+      v-model:visible="categoryDialogVisible"
+      :editing="Boolean(editingCategory)"
+      :form="categoryForm"
+      :rules="categoryRules"
+      :saving="categorySaving"
+      @submit="submitCategory"
+    />
 
-    <el-dialog v-model="bankDialogVisible" :title="editingBank ? '编辑题库' : '新建题库'" width="520px">
-      <el-form ref="bankFormRef" :model="bankForm" :rules="bankRules" label-width="92px">
-        <el-form-item label="分类" prop="categoryId">
-          <el-select v-model="bankForm.categoryId" class="form-control">
-            <el-option v-for="category in categories" :key="category.id" :label="category.name" :value="category.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="名称" prop="name">
-          <el-input v-model.trim="bankForm.name" maxlength="128" />
-        </el-form-item>
-        <el-form-item label="说明" prop="description">
-          <el-input v-model.trim="bankForm.description" type="textarea" :rows="3" maxlength="500" />
-        </el-form-item>
-        <el-form-item label="状态" prop="status">
-          <el-segmented v-model="bankForm.status" :options="statusOptions" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="bankDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="bankSaving" @click="submitBank">保存</el-button>
-      </template>
-    </el-dialog>
+    <QuestionBankDialog
+      ref="bankFormRef"
+      v-model:visible="bankDialogVisible"
+      :editing="Boolean(editingBank)"
+      :form="bankForm"
+      :rules="bankRules"
+      :categories="categories"
+      :saving="bankSaving"
+      @submit="submitBank"
+    />
 
-    <el-dialog v-model="questionDialogVisible" :title="editingQuestion ? '编辑试题' : '新建试题'" width="860px">
-      <el-form ref="questionFormRef" :model="questionForm" :rules="questionRules" label-width="92px">
-        <el-form-item label="题库" prop="bankId">
-          <el-select v-model="questionForm.bankId" filterable class="form-control">
-            <el-option v-for="bank in banks" :key="bank.id" :label="bank.name" :value="bank.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="题型" prop="type">
-          <el-segmented v-model="questionForm.type" :options="questionTypeOptions" @change="normalizeQuestionOptions" />
-        </el-form-item>
-        <el-form-item label="难度" prop="difficulty">
-          <el-select v-model="questionForm.difficulty" class="form-control">
-            <el-option label="简单" value="EASY" />
-            <el-option label="困难" value="HARD" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="题干" prop="stem">
-          <el-input v-model.trim="questionForm.stem" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item v-if="questionTypeMeta(questionForm.type).optionBased" label="选项">
-          <div class="option-editor">
-            <div v-for="(option, index) in questionForm.options" :key="`${option.label}-${index}`" class="option-row">
-              <el-checkbox v-model="option.correct" />
-              <el-input v-model.trim="option.label" class="option-label" />
-              <el-input v-model.trim="option.content" placeholder="选项内容" />
-              <el-button :icon="Delete" circle :disabled="questionForm.options.length <= 2" @click="removeOption(index)" />
-            </div>
-            <el-button :icon="Plus" @click="addOption">增加选项</el-button>
-          </div>
-        </el-form-item>
-        <el-form-item label="解析" prop="analysis">
-          <el-input v-model.trim="questionForm.analysis" type="textarea" :rows="3" />
-        </el-form-item>
-        <el-form-item label="附件">
-          <div class="attachment-editor">
-            <el-upload :show-file-list="false" :before-upload="handleAttachmentUpload" accept=".jpg,.jpeg,.png,.gif,.webp,.mp3,.wav,.ogg,.mp4,.pdf">
-              <el-button :icon="Upload" :loading="uploadingAttachment">上传附件</el-button>
-            </el-upload>
-            <div class="url-attachment">
-              <el-input v-model.trim="attachmentUrl" placeholder="输入图片、音频、视频或文件 URL" />
-              <el-select v-model="attachmentMediaType" class="url-attachment__type">
-                <el-option label="图片" value="IMAGE" />
-                <el-option label="音频" value="AUDIO" />
-                <el-option label="视频" value="VIDEO" />
-                <el-option label="文件" value="FILE" />
-              </el-select>
-              <el-button @click="addUrlAttachment">添加 URL</el-button>
-            </div>
-            <div v-if="questionForm.attachments.length" class="attachment-list">
-              <div v-for="(attachment, index) in questionForm.attachments" :key="`${attachment.fileUrl}-${index}`" class="attachment-item">
-                <div class="attachment-item__main">
-                  <el-image
-                    v-if="isImageAttachment(attachment)"
-                    class="attachment-thumb"
-                    :src="attachment.fileUrl"
-                    :preview-src-list="[attachment.fileUrl]"
-                    fit="cover"
-                    preview-teleported
-                  />
-                  <el-tag v-else effect="plain">{{ mediaTypeText(attachment.mediaType) }}</el-tag>
-                  <div class="attachment-meta">
-                    <span>{{ attachment.fileName }}</span>
-                    <a :href="attachment.fileUrl" target="_blank" rel="noreferrer">
-                      {{ isImageAttachment(attachment) ? '查看原图' : '打开附件' }}
-                    </a>
-                  </div>
-                </div>
-                <div class="attachment-actions">
-                  <el-button size="small" :disabled="index === 0" @click="moveAttachment(index, -1)">上移</el-button>
-                  <el-button size="small" :disabled="index === questionForm.attachments.length - 1" @click="moveAttachment(index, 1)">下移</el-button>
-                  <el-button :icon="Delete" circle @click="removeAttachment(index)" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </el-form-item>
-        <el-form-item label="状态" prop="status">
-          <el-radio-group v-model="questionForm.status">
-            <el-radio-button value="ACTIVE">启用</el-radio-button>
-            <el-radio-button value="DISABLED">禁用</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="questionDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="submitQuestion">保存</el-button>
-      </template>
-    </el-dialog>
+    <QuestionEditorDialog
+      ref="questionFormRef"
+      v-model:visible="questionDialogVisible"
+      v-model:attachment-url="attachmentUrl"
+      v-model:attachment-media-type="attachmentMediaType"
+      :editing="Boolean(editingQuestion)"
+      :form="questionForm"
+      :rules="questionRules"
+      :banks="banks"
+      :saving="saving"
+      :uploading-attachment="uploadingAttachment"
+      @normalize-options="normalizeQuestionOptions"
+      @add-option="addOption"
+      @remove-option="removeOption"
+      @add-url-attachment="addUrlAttachment"
+      @remove-attachment="removeAttachment"
+      @move-attachment="moveAttachment"
+      @upload="handleAttachmentUpload"
+      @submit="submitQuestion"
+    />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadRawFile } from 'element-plus'
-import { Delete, Download, Plus, Search, Upload } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, type FormRules, type UploadRawFile } from 'element-plus'
+import { Download, Plus, Upload } from '@element-plus/icons-vue'
 
+import QuestionBankDialog from '@/components/admin/question-banks/QuestionBankDialog.vue'
+import QuestionListPane from '@/components/admin/question-banks/QuestionListPane.vue'
+import QuestionBankTreePane from '@/components/admin/question-banks/QuestionBankTreePane.vue'
+import QuestionCategoryDialog from '@/components/admin/question-banks/QuestionCategoryDialog.vue'
+import QuestionEditorDialog from '@/components/admin/question-banks/QuestionEditorDialog.vue'
 import {
   createQuestion,
   createQuestionBank,
@@ -295,30 +135,18 @@ import {
 } from '@/api/exam-business'
 import type { ExcelImportResult } from '@/api/admin'
 import { downloadBlob } from '@/utils/download'
-import { questionTypeMeta, questionTypes, questionTypeText } from '@/utils/question-types'
+import {
+  buildBankTree,
+  createQuestionPayload,
+  inferMediaType,
+  nextOptionLabel,
+  normalizeOptionsForType,
+  questionOptionError,
+  questionToPayload,
+  type BankTreeNode,
+} from '@/utils/question-bank-editor'
 
 const pageTitle = '题库管理'
-
-interface BankTreeNode {
-  key: string
-  type: 'category' | 'bank'
-  label: string
-  children: BankTreeNode[]
-  categoryId?: number
-  bankId?: number
-  status?: QuestionBank['status']
-  questionCount: number
-  singleChoiceCount: number
-  multipleChoiceCount: number
-  writingCount: number
-}
-
-const statusOptions = [
-  { label: '启用', value: 'ACTIVE' },
-  { label: '禁用', value: 'DISABLED' },
-]
-
-const questionTypeOptions = questionTypes.map((type) => ({ label: type.shortLabel, value: type.code }))
 
 const categories = ref<NamedCategory[]>([])
 const banks = ref<QuestionBank[]>([])
@@ -341,9 +169,9 @@ const editingQuestion = ref<Question | null>(null)
 const importResult = ref<ExcelImportResult | null>(null)
 const attachmentUrl = ref('')
 const attachmentMediaType = ref<QuestionAttachmentPayload['mediaType']>('FILE')
-const questionFormRef = ref<FormInstance>()
-const bankFormRef = ref<FormInstance>()
-const categoryFormRef = ref<FormInstance>()
+const questionFormRef = ref<{ validate: () => Promise<boolean> | undefined }>()
+const bankFormRef = ref<{ validate: () => Promise<boolean> | undefined }>()
+const categoryFormRef = ref<{ validate: () => Promise<boolean> | undefined }>()
 const bankTreeRef = ref()
 const bankKeyword = ref('')
 
@@ -383,32 +211,7 @@ const categoryRules: FormRules<QuestionCategoryPayload> = {
 const selectedBank = computed(() => banks.value.find((bank) => bank.id === selectedBankId.value) || null)
 const selectedCategory = computed(() => categories.value.find((category) => category.id === selectedCategoryId.value) || null)
 const bankQuestionTotal = computed(() => banks.value.reduce((sum, bank) => sum + bank.questionCount, 0))
-const bankTree = computed<BankTreeNode[]>(() =>
-  categories.value.map((category) => ({
-    key: `category-${category.id}`,
-    type: 'category',
-    label: category.name,
-    categoryId: category.id,
-    questionCount: 0,
-    singleChoiceCount: 0,
-    multipleChoiceCount: 0,
-    writingCount: 0,
-    children: banks.value
-      .filter((bank) => bank.categoryId === category.id)
-      .map((bank) => ({
-        key: `bank-${bank.id}`,
-        type: 'bank',
-        label: bank.name,
-        bankId: bank.id,
-        status: bank.status,
-        questionCount: bank.questionCount,
-        singleChoiceCount: bank.singleChoiceCount,
-        multipleChoiceCount: bank.multipleChoiceCount,
-        writingCount: bank.writingCount,
-        children: [],
-      })),
-  })),
-)
+const bankTree = computed<BankTreeNode[]>(() => buildBankTree(categories.value, banks.value))
 
 onMounted(async () => {
   await Promise.all([loadCategories(), loadBanks()])
@@ -586,17 +389,7 @@ async function submitBank() {
 
 function openCreateQuestionDialog() {
   editingQuestion.value = null
-  questionForm.bankId = selectedBankId.value || banks.value.find((bank) => bank.categoryId === selectedCategoryId.value)?.id || banks.value[0]?.id || 1
-  questionForm.type = 'SINGLE_CHOICE'
-  questionForm.stem = ''
-  questionForm.analysis = ''
-  questionForm.difficulty = 'EASY'
-  questionForm.status = 'ACTIVE'
-  questionForm.options = [
-    { label: 'A', content: '', correct: true },
-    { label: 'B', content: '', correct: false },
-  ]
-  questionForm.attachments = []
+  Object.assign(questionForm, createQuestionPayload(selectedBankId.value || banks.value.find((bank) => bank.categoryId === selectedCategoryId.value)?.id || banks.value[0]?.id || 1))
   attachmentUrl.value = ''
   attachmentMediaType.value = 'FILE'
   questionDialogVisible.value = true
@@ -604,25 +397,14 @@ function openCreateQuestionDialog() {
 
 function openEditQuestionDialog(question: Question) {
   editingQuestion.value = question
-  questionForm.bankId = question.bankId
-  questionForm.type = question.type
-  questionForm.stem = question.stem
-  questionForm.analysis = question.analysis || ''
-  questionForm.difficulty = question.difficulty
-  questionForm.status = question.status
-  questionForm.options = question.options.map((option) => ({ label: option.label, content: option.content, correct: option.correct }))
-  questionForm.attachments = question.attachments.map((attachment) => ({
-    fileName: attachment.fileName,
-    fileUrl: attachment.fileUrl,
-    mediaType: attachment.mediaType,
-  }))
+  Object.assign(questionForm, questionToPayload(question))
   attachmentUrl.value = ''
   attachmentMediaType.value = 'FILE'
   questionDialogVisible.value = true
 }
 
 function addOption() {
-  const label = String.fromCharCode(65 + questionForm.options.length)
+  const label = nextOptionLabel(questionForm.options.length)
   questionForm.options.push({ label, content: '', correct: false })
 }
 
@@ -631,30 +413,15 @@ function removeOption(index: number) {
 }
 
 function normalizeQuestionOptions() {
-  if (!questionTypeMeta(questionForm.type).optionBased) {
-    questionForm.options = []
-    return
-  }
-  if (questionForm.options.length === 0) {
-    questionForm.options = [
-      { label: 'A', content: '', correct: true },
-      { label: 'B', content: '', correct: false },
-    ]
-  }
+  normalizeOptionsForType(questionForm)
 }
 
 async function submitQuestion() {
   await questionFormRef.value?.validate()
-  if (!questionTypeMeta(questionForm.type).optionBased) {
-    questionForm.options = []
-  }
-  const correctCount = questionForm.options.filter((option) => option.correct).length
-  if (questionForm.type === 'SINGLE_CHOICE' && correctCount !== 1) {
-    ElMessage.error('单选题必须且只能有一个正确答案')
-    return
-  }
-  if (questionForm.type === 'MULTIPLE_CHOICE' && correctCount < 2) {
-    ElMessage.error('多选题至少需要两个正确答案')
+  normalizeOptionsForType(questionForm)
+  const optionError = questionOptionError(questionForm)
+  if (optionError) {
+    ElMessage.error(optionError)
     return
   }
   saving.value = true
@@ -726,29 +493,6 @@ function moveAttachment(index: number, offset: number) {
   questionForm.attachments.splice(target, 0, current)
 }
 
-function mediaTypeText(type: QuestionAttachmentPayload['mediaType']) {
-  const names: Record<QuestionAttachmentPayload['mediaType'], string> = {
-    IMAGE: '图片',
-    AUDIO: '音频',
-    VIDEO: '视频',
-    FILE: '文件',
-  }
-  return names[type]
-}
-
-function isImageAttachment(attachment: QuestionAttachmentPayload) {
-  return attachment.mediaType === 'IMAGE' || imageUrlPattern.test(attachment.fileUrl)
-}
-
-const imageUrlPattern = /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i
-
-function inferMediaType(url: string, fallback: QuestionAttachmentPayload['mediaType']) {
-  if (imageUrlPattern.test(url)) {
-    return 'IMAGE'
-  }
-  return fallback
-}
-
 function nextCategorySortOrder() {
   return categories.value.length ? Math.max(...categories.value.map((category) => category.sortOrder)) + 10 : 10
 }
@@ -762,203 +506,14 @@ function nextCategorySortOrder() {
   min-width: 0;
 }
 
-.tree-pane,
-.question-pane {
-  min-width: 0;
-  padding: 18px;
-  border: 1px solid var(--ks-border);
-  border-radius: var(--ks-radius);
-  background: var(--ks-panel);
-}
-
-.tree-pane :deep(.el-tree-node__content) {
-  height: auto;
-  min-height: 54px;
-  align-items: flex-start;
-  padding-top: 5px;
-  padding-bottom: 5px;
-  border-radius: 6px;
-}
-
-.tree-pane :deep(.el-tree-node__expand-icon) {
-  margin-top: 12px;
-  flex: none;
-}
-
-.question-pane {
-  display: grid;
-  gap: 14px;
-}
-
-.pane-title,
-.selected-bank,
-.bank-node {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-width: 0;
-}
-
-.pane-title {
-  margin-bottom: 12px;
-}
-
-.pane-title__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.pane-title span {
-  color: var(--ks-text-muted);
-  font-size: 13px;
-}
-
-.bank-search {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.bank-node {
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  padding: 2px 0;
-}
-
-.bank-node__actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 4px;
-}
-
-.bank-node__actions .el-button {
-  padding: 0;
-}
-
-.bank-node__main {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.bank-node__main .entity-name,
-.bank-node__main .muted-text {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  line-height: 20px;
-}
-
-.bank-node .el-tag {
-  flex: none;
-}
-
-.bank-node--category .entity-name {
-  font-weight: 700;
-}
-
-.selected-bank h2 {
-  margin: 0;
-  font-size: 20px;
-  letter-spacing: 0;
-}
-
 .import-errors {
   margin: 8px 0 0;
   padding-left: 18px;
 }
 
-.attachment-editor {
-  display: grid;
-  gap: 10px;
-  width: 100%;
-}
-
-.url-attachment {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) 120px auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.url-attachment__type {
-  width: 120px;
-}
-
-.attachment-list {
-  display: grid;
-  gap: 8px;
-}
-
-.attachment-item {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 10px;
-  border: 1px solid var(--ks-border);
-  border-radius: var(--ks-radius);
-}
-
-.attachment-item__main {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.attachment-actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-}
-
-.attachment-thumb {
-  flex: none;
-  width: 72px;
-  height: 54px;
-  overflow: hidden;
-  border: 1px solid var(--ks-border);
-  border-radius: 6px;
-  background: var(--ks-panel-muted);
-}
-
-.attachment-meta {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.attachment-meta span,
-.attachment-meta a {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attachment-meta a {
-  max-width: 320px;
-  color: var(--el-color-primary);
-}
-
 @media (max-width: 900px) {
-  .question-workbench,
-  .url-attachment {
+  .question-workbench {
     grid-template-columns: 1fr;
-  }
-
-  .selected-bank {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }
 </style>
