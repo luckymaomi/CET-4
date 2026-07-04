@@ -2,8 +2,8 @@
   <main class="login-page">
     <section class="login-panel">
       <div class="login-copy">
-        <h1>CET-4 四级考试平台</h1>
-        <p>以大学英语四级真题作为演示样例，展示题库维护、考试发布、在线作答、阅卷评分和成绩复盘流程。</p>
+        <h1>通用开源考试平台</h1>
+        <p>可二次开发，可商用部署。以大学英语四级真题作为演示样例，展示题库维护、考试发布、在线作答、阅卷评分和成绩复盘流程。</p>
       </div>
 
       <el-form ref="formRef" class="login-form" :model="form" :rules="rules" label-position="top" @submit.prevent>

@@ -244,37 +244,6 @@ button {
     radial-gradient(circle at 18% 22%, rgb(22 119 255 / 14%), transparent 32%);
 }
 
-.login-copy::before {
-  position: absolute;
-  top: 56px;
-  bottom: 56px;
-  left: 40px;
-  width: 3px;
-  border-radius: 999px;
-  background: linear-gradient(180deg, var(--ks-primary), rgb(18 183 106 / 65%));
-  content: '';
-}
-
-.login-copy::after {
-  position: absolute;
-  right: 44px;
-  bottom: 42px;
-  width: 168px;
-  height: 88px;
-  border: 1px solid rgb(22 119 255 / 12%);
-  border-radius: 10px;
-  background:
-    linear-gradient(90deg, rgb(22 119 255 / 7%) 1px, transparent 1px),
-    linear-gradient(180deg, rgb(22 119 255 / 7%) 1px, transparent 1px);
-  background-size: 24px 24px;
-  content: '';
-}
-
-.login-copy > * {
-  position: relative;
-  z-index: 1;
-}
-
 .login-copy h1,
 .hero h1,
 .exam-home h1 {
@@ -421,8 +390,7 @@ button {
     radial-gradient(circle at 92% 18%, rgb(56 161 105 / 11%), transparent 26%);
 }
 
-.dashboard-hero__copy,
-.dashboard-contact {
+.dashboard-hero__copy {
   position: relative;
   z-index: 1;
 }
@@ -487,32 +455,6 @@ button {
 .dashboard-link svg {
   width: 16px;
   height: 16px;
-}
-
-.dashboard-contact {
-  display: grid;
-  align-content: start;
-  gap: 8px;
-  min-width: 0;
-  padding: 20px;
-  border: 1px solid rgb(22 119 255 / 14%);
-  border-radius: var(--ks-radius);
-  background: rgb(255 255 255 / 72%);
-  box-shadow: 0 16px 42px rgb(15 23 42 / 7%);
-}
-
-.dashboard-contact span,
-.dashboard-contact small {
-  color: var(--ks-text-muted);
-}
-
-.dashboard-contact strong {
-  color: var(--ks-text);
-  font-size: 20px;
-}
-
-.dashboard-contact small {
-  line-height: 1.7;
 }
 
 .dashboard-section {

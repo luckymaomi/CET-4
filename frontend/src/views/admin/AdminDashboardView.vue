@@ -27,11 +27,6 @@
           </a>
         </div>
       </div>
-      <div class="dashboard-contact">
-        <span>定制与二次开发</span>
-        <strong>QQ：1773384983</strong>
-        <small>可基于开源版扩展题型、考试流程、部署方式和品牌界面。</small>
-      </div>
     </section>
 
     <section class="dashboard-section">
@@ -150,6 +145,5 @@ const workflows = [
   '用左侧“在线考试”进入考试中心，选择四级考试并开始作答。',
   '用“题库管理”查看题库、试题、听力音频和题组结构。',
   '用“考试管理”查看考试配置、成绩列表和人工阅卷流程。',
-  '需要定制题型、品牌、部署或业务流程时，可以通过首页联系方式沟通。',
 ]
 </script>
