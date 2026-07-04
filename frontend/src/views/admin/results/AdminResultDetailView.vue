@@ -9,7 +9,7 @@
       <el-button @click="router.push({ name: 'admin-exams' })">返回考试管理</el-button>
     </header>
 
-    <ExamResultReview v-if="result" :result="result" />
+    <ExamResultReview v-if="result" :result="result" reviewable @updated="result = $event" />
   </section>
 </template>
 

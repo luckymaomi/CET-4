@@ -90,6 +90,8 @@ create table exam_rules (
   single_score decimal(6,2) not null default 0,
   multiple_count int not null default 0,
   multiple_score decimal(6,2) not null default 0,
+  writing_count int not null default 0,
+  writing_score decimal(6,2) not null default 0,
   sort_order int not null,
   created_at datetime not null default current_timestamp,
   constraint fk_exam_rules_exam foreign key (exam_id) references exams (id),
@@ -250,13 +252,18 @@ create table exam_answers (
   id bigint primary key auto_increment,
   attempt_id bigint not null,
   attempt_question_id bigint not null,
-  selected_labels varchar(255) not null,
-  is_correct bit not null,
+  selected_labels varchar(255) null,
+  answer_text text null,
+  is_correct bit null,
   score decimal(6,2) not null default 0,
+  review_comment varchar(1000) null,
+  reviewed_by bigint null,
+  reviewed_at datetime null,
   created_at datetime not null default current_timestamp,
   updated_at datetime not null default current_timestamp on update current_timestamp,
   constraint fk_exam_answers_attempt foreign key (attempt_id) references exam_attempts (id),
   constraint fk_exam_answers_question foreign key (attempt_question_id) references exam_attempt_questions (id),
+  constraint fk_exam_answers_reviewer foreign key (reviewed_by) references users (id),
   constraint uk_exam_answers_question unique (attempt_question_id),
   index idx_exam_answers_attempt (attempt_id)
 );
@@ -268,9 +275,13 @@ create table exam_results (
   user_id bigint not null,
   total_score decimal(7,2) not null,
   obtained_score decimal(7,2) not null,
+  objective_score decimal(7,2) not null default 0,
+  subjective_score decimal(7,2) not null default 0,
   correct_count int not null,
   question_count int not null,
+  grading_status varchar(20) not null default 'FINAL',
   submitted_at datetime not null,
+  reviewed_at datetime null,
   created_at datetime not null default current_timestamp,
   constraint fk_exam_results_attempt foreign key (attempt_id) references exam_attempts (id),
   constraint fk_exam_results_exam foreign key (exam_id) references exams (id),
@@ -391,14 +402,17 @@ select eaq.attempt_id,
        case when mod(eaq.attempt_id, 2) = 0 then eaq.score else 0 end
 from exam_attempt_questions eaq;
 
-insert into exam_results (attempt_id, exam_id, user_id, total_score, obtained_score, correct_count, question_count, submitted_at)
+insert into exam_results (attempt_id, exam_id, user_id, total_score, obtained_score, objective_score, subjective_score, correct_count, question_count, grading_status, submitted_at)
 select ea.id,
        ea.exam_id,
        ea.user_id,
        sum(eaq.score),
        sum(ans.score),
+       sum(ans.score),
+       0.00,
        sum(case when ans.is_correct = true then 1 else 0 end),
        count(eaq.id),
+       'FINAL',
        ea.submitted_at
 from exam_attempts ea
 join exam_attempt_questions eaq on eaq.attempt_id = ea.id

@@ -6,7 +6,9 @@ import {
   createQuestion,
   createQuestionBank,
   createQuestionCategory,
+  deleteExam,
   closeExam,
+  completeResultReview,
   copyExam,
   deleteQuestionCategory,
   downloadExamPaper,
@@ -23,8 +25,9 @@ import {
   fetchQuestionDetail,
   importQuestions,
   publishExam,
+  reviewWritingQuestion,
   revokeExam,
-  saveExamAnswer,
+  saveExamAnswers,
   startExam,
   submitExam,
   updateQuestionCategory,
@@ -90,7 +93,7 @@ describe('exam business api', () => {
       questionOrderMode: 'FIXED',
       openType: 'PUBLIC',
       departmentIds: [],
-      rules: [{ bankId: 1, singleCount: 1, singleScore: 5, multipleCount: 0, multipleScore: 0 }],
+      rules: [{ bankId: 1, singleCount: 1, singleScore: 5, multipleCount: 0, multipleScore: 0, writingCount: 1, writingScore: 15 }],
       paperQuestions: [{ questionId: 2, score: 5, sortOrder: 10 }],
     })
     await fetchAdminExamDetail(1)
@@ -99,6 +102,7 @@ describe('exam business api', () => {
     await downloadExamPaper(1)
     await revokeExam(1)
     await closeExam(1)
+    await deleteExam(1)
 
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/question-banks', {
       categoryId: 1,
@@ -144,7 +148,7 @@ describe('exam business api', () => {
       questionOrderMode: 'FIXED',
       openType: 'PUBLIC',
       departmentIds: [],
-      rules: [{ bankId: 1, singleCount: 1, singleScore: 5, multipleCount: 0, multipleScore: 0 }],
+      rules: [{ bankId: 1, singleCount: 1, singleScore: 5, multipleCount: 0, multipleScore: 0, writingCount: 1, writingScore: 15 }],
       paperQuestions: [{ questionId: 2, score: 5, sortOrder: 10 }],
     })
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/exams/1')
@@ -153,6 +157,7 @@ describe('exam business api', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/exams/1/download', { responseType: 'blob' })
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/exams/1/revoke')
     expect(apiClient.post).toHaveBeenCalledWith('/api/admin/exams/1/close')
+    expect(apiClient.delete).toHaveBeenCalledWith('/api/admin/exams/1')
   })
 
   it('uses exam portal endpoints for task start submit and results', async () => {
@@ -161,21 +166,25 @@ describe('exam business api', () => {
 
     await fetchExamTasks()
     await startExam(1)
-    await saveExamAnswer(1, { questionId: 2, selectedLabels: ['A'] })
+    await saveExamAnswers(1, [{ questionId: 2, selectedLabels: ['A'] }])
     await submitExam(1, [{ questionId: 2, selectedLabels: ['A'] }])
     await fetchAdminResults({ examId: 1 })
     await fetchAdminResultDetail(9)
+    await reviewWritingQuestion(9, 3, { score: 13, comment: '结构清晰' })
+    await completeResultReview(9)
     await fetchMyExamResults()
     await fetchMyExamResultDetail(9)
 
     expect(apiClient.get).toHaveBeenCalledWith('/api/exam/tasks')
     expect(apiClient.post).toHaveBeenCalledWith('/api/exam/1/start')
-    expect(apiClient.post).toHaveBeenCalledWith('/api/exam/1/answers', { questionId: 2, selectedLabels: ['A'] })
+    expect(apiClient.post).toHaveBeenCalledWith('/api/exam/1/answers', { answers: [{ questionId: 2, selectedLabels: ['A'] }] })
     expect(apiClient.post).toHaveBeenCalledWith('/api/exam/1/submit', {
       answers: [{ questionId: 2, selectedLabels: ['A'] }],
     })
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/results', { params: { examId: 1 } })
     expect(apiClient.get).toHaveBeenCalledWith('/api/admin/results/9')
+    expect(apiClient.post).toHaveBeenCalledWith('/api/admin/results/9/questions/3/review', { score: 13, comment: '结构清晰' })
+    expect(apiClient.post).toHaveBeenCalledWith('/api/admin/results/9/complete-review')
     expect(apiClient.get).toHaveBeenCalledWith('/api/exam/results')
     expect(apiClient.get).toHaveBeenCalledWith('/api/exam/results/9')
   })

@@ -189,4 +189,120 @@ test.describe('考试管理', () => {
 
     expect(consoleIssues).toEqual([])
   })
+
+  test('考试草稿不会被题库编辑魔法更新，显式更新试卷后才持久化新快照', async ({ page }) => {
+    const consoleIssues = collectConsoleIssues(page)
+    await login(page)
+    const token = await page.evaluate(() => window.localStorage.getItem('kaoshi.accessToken'))
+    const headers = { Authorization: `Bearer ${token}` }
+    const suffix = Date.now()
+    const originalStem = `草稿快照原题干 ${suffix}`
+    const changedStem = `草稿快照新题干 ${suffix}`
+    const examTitle = `无魔法草稿考试 ${suffix}`
+
+    const bankResponse = await page.request.post('/api/admin/question-banks', {
+      headers,
+      data: {
+        categoryId: 1,
+        name: `无魔法题库 ${suffix}`,
+        description: 'Playwright 快照夹具',
+        status: 'ACTIVE',
+      },
+    })
+    expect(bankResponse.ok()).toBeTruthy()
+    const bank = (await bankResponse.json()).data
+
+    const questionResponse = await page.request.post('/api/admin/questions', {
+      headers,
+      data: {
+        bankId: bank.id,
+        type: 'SINGLE_CHOICE',
+        stem: originalStem,
+        analysis: '原解析',
+        difficulty: 'EASY',
+        status: 'ACTIVE',
+        options: [
+          { label: 'A', content: '错误', correct: false },
+          { label: 'B', content: '正确', correct: true },
+        ],
+        attachments: [],
+      },
+    })
+    expect(questionResponse.ok()).toBeTruthy()
+    const question = (await questionResponse.json()).data
+
+    const examResponse = await page.request.post('/api/admin/exams', {
+      headers,
+      data: {
+        title: examTitle,
+        description: '验证题库编辑不会隐式改写草稿',
+        qualifyScore: 0,
+        startTime: '2026-01-01T00:00:00',
+        endTime: '2026-12-31T23:59:59',
+        durationMinutes: 20,
+        timeLimit: false,
+        attemptLimit: null,
+        displayMode: 'ALL',
+        questionOrderMode: 'FIXED',
+        openType: 'PUBLIC',
+        departmentIds: [],
+        rules: [
+          {
+            bankId: bank.id,
+            singleCount: 1,
+            singleScore: 5,
+            multipleCount: 0,
+            multipleScore: 0,
+            writingCount: 0,
+            writingScore: 0,
+          },
+        ],
+      },
+    })
+    expect(examResponse.ok()).toBeTruthy()
+
+    await page.locator('li.el-menu-item').filter({ hasText: /^考试管理$/ }).click()
+    await page.getByPlaceholder('搜索考试名称').fill(examTitle)
+    await page.getByRole('button', { name: '搜索' }).click()
+    await page.getByRole('row').filter({ hasText: examTitle }).getByRole('button', { name: '编辑' }).click()
+    let examDialog = page.getByRole('dialog', { name: '编辑考试' })
+    await expect(examDialog.locator('.paper-table')).toContainText(originalStem)
+    await examDialog.getByRole('button', { name: '取消' }).click()
+
+    const updateQuestionResponse = await page.request.put(`/api/admin/questions/${question.id}`, {
+      headers,
+      data: {
+        bankId: bank.id,
+        type: 'SINGLE_CHOICE',
+        stem: changedStem,
+        analysis: '新解析',
+        difficulty: 'EASY',
+        status: 'ACTIVE',
+        options: [
+          { label: 'A', content: '正确', correct: true },
+          { label: 'B', content: '错误', correct: false },
+        ],
+        attachments: [],
+      },
+    })
+    expect(updateQuestionResponse.ok()).toBeTruthy()
+
+    await page.getByRole('row').filter({ hasText: examTitle }).getByRole('button', { name: '编辑' }).click()
+    examDialog = page.getByRole('dialog', { name: '编辑考试' })
+    await expect(examDialog.locator('.paper-table')).toContainText(originalStem)
+    await expect(examDialog.locator('.paper-table')).not.toContainText(changedStem)
+    await examDialog.getByRole('button', { name: '更新试卷' }).click()
+    await expect(examDialog.locator('.paper-table')).toContainText(changedStem)
+    await examDialog.getByRole('button', { name: '保存草稿' }).click()
+    await expect(page.getByText('草稿已保存')).toBeVisible()
+    await page.getByRole('dialog', { name: '编辑考试' }).getByRole('button', { name: '取消' }).click()
+
+    await page.getByRole('row').filter({ hasText: examTitle }).getByRole('button', { name: '编辑' }).click()
+    examDialog = page.getByRole('dialog', { name: '编辑考试' })
+    await expect(examDialog.locator('.paper-table')).toContainText(changedStem)
+    await expect(examDialog.locator('.paper-table')).not.toContainText(originalStem)
+    await examDialog.getByRole('button', { name: '取消' }).click()
+
+    expect(consoleIssues).toEqual([])
+  })
 })

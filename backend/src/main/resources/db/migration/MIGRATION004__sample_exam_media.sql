@@ -1,6 +1,7 @@
 insert into questions (id, bank_id, type, stem, analysis, difficulty, status)
 values
-  (4, 1, 'MULTIPLE_CHOICE', 'Look at the chart and choose the correct statements.', 'The chart highlights daily reading and listening practice.', 'HARD', 'ACTIVE');
+  (4, 1, 'MULTIPLE_CHOICE', 'Look at the chart and choose the correct statements.', 'The chart highlights daily reading and listening practice.', 'HARD', 'ACTIVE'),
+  (5, 1, 'WRITING', 'Write an essay about the importance of steady English practice. You should write at least 120 words.', 'A strong essay should present a clear opinion, support it with concrete examples, and use coherent structure.', 'HARD', 'ACTIVE');
 
 insert into question_options (question_id, option_label, content, is_correct, sort_order)
 values
@@ -17,16 +18,20 @@ values
   (4, 'dog-wolf-friendship.mp3', '/local-assets/dog-wolf-friendship.mp3', 'AUDIO', 20);
 
 update exam_rules
-set multiple_count = 2
+set multiple_count = 2,
+    writing_count = 1,
+    writing_score = 10.00
 where exam_id = 1 and bank_id = 1;
 
 update exams
-set qualify_score = 12.00,
+set qualify_score = 18.00,
     updated_at = current_timestamp
 where id = 1;
 
 insert into exam_draft_questions (exam_id, source_question_id, bank_id, bank_name, type, stem, analysis, score, sort_order)
-values (1, 4, 1, '英语基础题库', 'MULTIPLE_CHOICE', 'Look at the chart and choose the correct statements.', 'The chart highlights daily reading and listening practice.', 5.00, 40);
+values
+  (1, 4, 1, '英语基础题库', 'MULTIPLE_CHOICE', 'Look at the chart and choose the correct statements.', 'The chart highlights daily reading and listening practice.', 5.00, 40),
+  (1, 5, 1, '英语基础题库', 'WRITING', 'Write an essay about the importance of steady English practice. You should write at least 120 words.', 'A strong essay should present a clear opinion, support it with concrete examples, and use coherent structure.', 10.00, 50);
 
 insert into exam_draft_options (draft_question_id, option_label, content, is_correct, sort_order)
 select edq.id, qo.option_label, qo.content, qo.is_correct, qo.sort_order
@@ -41,7 +46,9 @@ join question_attachments qa on qa.question_id = edq.source_question_id
 where edq.source_question_id = 4;
 
 insert into exam_published_questions (id, exam_id, source_question_id, type, stem, analysis, score, sort_order)
-values (4, 1, 4, 'MULTIPLE_CHOICE', 'Look at the chart and choose the correct statements.', 'The chart highlights daily reading and listening practice.', 5.00, 40);
+values
+  (4, 1, 4, 'MULTIPLE_CHOICE', 'Look at the chart and choose the correct statements.', 'The chart highlights daily reading and listening practice.', 5.00, 40),
+  (5, 1, 5, 'WRITING', 'Write an essay about the importance of steady English practice. You should write at least 120 words.', 'A strong essay should present a clear opinion, support it with concrete examples, and use coherent structure.', 10.00, 50);
 
 insert into exam_published_options (published_question_id, option_label, content, is_correct, sort_order)
 select epq.id, qo.option_label, qo.content, qo.is_correct, qo.sort_order
@@ -58,7 +65,7 @@ where epq.source_question_id in (2, 3, 4);
 insert into exam_attempt_questions (attempt_id, published_question_id, source_question_id, type, stem, analysis, score, sort_order, display_order)
 select ea.id, epq.id, epq.source_question_id, epq.type, epq.stem, epq.analysis, epq.score, epq.sort_order, epq.sort_order
 from exam_attempts ea
-join exam_published_questions epq on epq.exam_id = ea.exam_id and epq.source_question_id = 4
+join exam_published_questions epq on epq.exam_id = ea.exam_id and epq.source_question_id in (4, 5)
 where ea.exam_id = 1;
 
 insert into exam_attempt_options (attempt_question_id, option_label, content, is_correct, sort_order)
@@ -82,14 +89,31 @@ select eaq.attempt_id,
 from exam_attempt_questions eaq
 where eaq.source_question_id = 4;
 
+insert into exam_answers (attempt_id, attempt_question_id, selected_labels, answer_text, is_correct, score, review_comment, reviewed_by, reviewed_at)
+select eaq.attempt_id,
+       eaq.id,
+       null,
+       concat('I practice English every day because steady practice helps me improve listening, reading and writing. Attempt ', eaq.attempt_id, ' includes a sample essay answer.'),
+       null,
+       case when mod(eaq.attempt_id, 2) = 0 then 8.00 else 0.00 end,
+       case when mod(eaq.attempt_id, 2) = 0 then '观点清晰，结构完整。' else null end,
+       case when mod(eaq.attempt_id, 2) = 0 then 1 else null end,
+       case when mod(eaq.attempt_id, 2) = 0 then '2026-07-01 10:00:00' else null end
+from exam_attempt_questions eaq
+where eaq.source_question_id = 5;
+
 update exam_attempts
-set total_score = 20.00,
-    obtained_score = case when mod(id, 2) = 0 then 20.00 else 0.00 end
+set total_score = 30.00,
+    obtained_score = case when mod(id, 2) = 0 then 28.00 else 0.00 end
 where exam_id = 1 and id between 1 and 10;
 
 update exam_results
-set total_score = 20.00,
-    obtained_score = case when mod(attempt_id, 2) = 0 then 20.00 else 0.00 end,
+set total_score = 30.00,
+    obtained_score = case when mod(attempt_id, 2) = 0 then 28.00 else 0.00 end,
+    objective_score = case when mod(attempt_id, 2) = 0 then 20.00 else 0.00 end,
+    subjective_score = case when mod(attempt_id, 2) = 0 then 8.00 else 0.00 end,
     correct_count = case when mod(attempt_id, 2) = 0 then 4 else 0 end,
-    question_count = 4
+    question_count = 5,
+    grading_status = case when mod(attempt_id, 2) = 0 then 'FINAL' else 'PENDING_REVIEW' end,
+    reviewed_at = case when mod(attempt_id, 2) = 0 then '2026-07-01 10:00:00' else null end
 where exam_id = 1 and attempt_id between 1 and 10;

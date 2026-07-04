@@ -51,7 +51,7 @@
               <div class="bank-node__main">
                 <span class="entity-name">{{ data.label }}</span>
                 <span v-if="data.type === 'bank'" class="muted-text">
-                  {{ data.questionCount }} 题 · 单选 {{ data.singleChoiceCount }} · 多选 {{ data.multipleChoiceCount }}
+                  {{ data.questionCount }} 题 · 单选 {{ data.singleChoiceCount }} · 多选 {{ data.multipleChoiceCount }} · 写作 {{ data.writingCount }}
                 </span>
                 <span v-else class="muted-text">{{ data.children.length }} 个题库</span>
               </div>
@@ -100,9 +100,12 @@
           </el-table-column>
           <el-table-column label="答案" min-width="140">
             <template #default="{ row }: { row: Question }">
-              <el-tag v-for="option in row.options.filter((item) => item.correct)" :key="option.id" class="answer-tag">
-                {{ option.label }}
-              </el-tag>
+              <span v-if="!questionTypeMeta(row.type).optionBased" class="muted-text">主观阅卷</span>
+              <template v-else>
+                <el-tag v-for="option in row.options.filter((item) => item.correct)" :key="option.id" class="answer-tag">
+                  {{ option.label }}
+                </el-tag>
+              </template>
             </template>
           </el-table-column>
           <el-table-column label="状态" width="90">
@@ -180,7 +183,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="题型" prop="type">
-          <el-segmented v-model="questionForm.type" :options="questionTypeOptions" />
+          <el-segmented v-model="questionForm.type" :options="questionTypeOptions" @change="normalizeQuestionOptions" />
         </el-form-item>
         <el-form-item label="难度" prop="difficulty">
           <el-select v-model="questionForm.difficulty" class="form-control">
@@ -191,7 +194,7 @@
         <el-form-item label="题干" prop="stem">
           <el-input v-model.trim="questionForm.stem" type="textarea" :rows="3" />
         </el-form-item>
-        <el-form-item label="选项">
+        <el-form-item v-if="questionTypeMeta(questionForm.type).optionBased" label="选项">
           <div class="option-editor">
             <div v-for="(option, index) in questionForm.options" :key="`${option.label}-${index}`" class="option-row">
               <el-checkbox v-model="option.correct" />
@@ -292,6 +295,7 @@ import {
 } from '@/api/exam-business'
 import type { ExcelImportResult } from '@/api/admin'
 import { downloadBlob } from '@/utils/download'
+import { questionTypeMeta, questionTypes, questionTypeText } from '@/utils/question-types'
 
 const pageTitle = '题库管理'
 
@@ -306,6 +310,7 @@ interface BankTreeNode {
   questionCount: number
   singleChoiceCount: number
   multipleChoiceCount: number
+  writingCount: number
 }
 
 const statusOptions = [
@@ -313,10 +318,7 @@ const statusOptions = [
   { label: '禁用', value: 'DISABLED' },
 ]
 
-const questionTypeOptions = [
-  { label: '单选', value: 'SINGLE_CHOICE' },
-  { label: '多选', value: 'MULTIPLE_CHOICE' },
-]
+const questionTypeOptions = questionTypes.map((type) => ({ label: type.shortLabel, value: type.code }))
 
 const categories = ref<NamedCategory[]>([])
 const banks = ref<QuestionBank[]>([])
@@ -390,6 +392,7 @@ const bankTree = computed<BankTreeNode[]>(() =>
     questionCount: 0,
     singleChoiceCount: 0,
     multipleChoiceCount: 0,
+    writingCount: 0,
     children: banks.value
       .filter((bank) => bank.categoryId === category.id)
       .map((bank) => ({
@@ -401,6 +404,7 @@ const bankTree = computed<BankTreeNode[]>(() =>
         questionCount: bank.questionCount,
         singleChoiceCount: bank.singleChoiceCount,
         multipleChoiceCount: bank.multipleChoiceCount,
+        writingCount: bank.writingCount,
         children: [],
       })),
   })),
@@ -626,8 +630,24 @@ function removeOption(index: number) {
   questionForm.options.splice(index, 1)
 }
 
+function normalizeQuestionOptions() {
+  if (!questionTypeMeta(questionForm.type).optionBased) {
+    questionForm.options = []
+    return
+  }
+  if (questionForm.options.length === 0) {
+    questionForm.options = [
+      { label: 'A', content: '', correct: true },
+      { label: 'B', content: '', correct: false },
+    ]
+  }
+}
+
 async function submitQuestion() {
   await questionFormRef.value?.validate()
+  if (!questionTypeMeta(questionForm.type).optionBased) {
+    questionForm.options = []
+  }
   const correctCount = questionForm.options.filter((option) => option.correct).length
   if (questionForm.type === 'SINGLE_CHOICE' && correctCount !== 1) {
     ElMessage.error('单选题必须且只能有一个正确答案')
@@ -704,10 +724,6 @@ function moveAttachment(index: number, offset: number) {
   }
   const [current] = questionForm.attachments.splice(index, 1)
   questionForm.attachments.splice(target, 0, current)
-}
-
-function questionTypeText(type: Question['type']) {
-  return type === 'SINGLE_CHOICE' ? '单选' : '多选'
 }
 
 function mediaTypeText(type: QuestionAttachmentPayload['mediaType']) {

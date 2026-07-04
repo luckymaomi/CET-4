@@ -145,7 +145,8 @@ public class QuestionBankService {
                 bank.getStatus(),
                 bankMapper.countQuestionsByBank(bank.getId()),
                 bankMapper.countQuestionsByBankAndType(bank.getId(), "SINGLE_CHOICE"),
-                bankMapper.countQuestionsByBankAndType(bank.getId(), "MULTIPLE_CHOICE")
+                bankMapper.countQuestionsByBankAndType(bank.getId(), "MULTIPLE_CHOICE"),
+                bankMapper.countQuestionsByBankAndType(bank.getId(), "WRITING")
         );
     }
 }

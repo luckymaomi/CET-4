@@ -272,7 +272,11 @@ class ExamBusinessFlowTests {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"questionId": 1, "selectedLabels": ["B"]}
+                                {
+                                  "answers": [
+                                    {"questionId": 1, "selectedLabels": ["B"]}
+                                  ]
+                                }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.questions[0].selectedLabels[0]").value("B"));
@@ -281,6 +285,152 @@ class ExamBusinessFlowTests {
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.questions[0].selectedLabels[0]").value("B"));
+    }
+
+    @Test
+    void writingQuestionSupportsAnswerSaveReviewResumeCompleteAndFinalLock() throws Exception {
+        String token = adminToken();
+        long bankId = createBank(token, "写作生命周期题库");
+        long singleQuestionId = createSingleChoiceQuestion(token, bankId);
+        long writingQuestionId = createWritingQuestion(token, bankId);
+
+        String examResponse = createDraftExam(token, bankId, 1, 0, 1, """
+                "title": "写作阅卷考试",
+                "description": "用于验证主观题阅卷闭环",
+                "qualifyScore": 20,
+                "startTime": "2026-01-01T00:00:00",
+                "endTime": "2026-12-31T23:59:59",
+                "durationMinutes": 20,
+                "timeLimit": false,
+                "attemptLimit": null,
+                "displayMode": "ALL",
+                "questionOrderMode": "FIXED",
+                "openType": "PUBLIC"
+                """);
+        long examId = objectMapper.readTree(examResponse).at("/data/id").asLong();
+        publishExam(token, examId);
+
+        mockMvc.perform(post("/api/exam/{examId}/start", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.questions.length()").value(2))
+                .andExpect(jsonPath("$.data.questions[1].type").value("WRITING"))
+                .andExpect(jsonPath("$.data.questions[1].options.length()").value(0));
+
+        mockMvc.perform(post("/api/exam/{examId}/answers", examId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"questionId": %d, "answerText": "Legacy single question save must fail."}
+                                """.formatted(writingQuestionId)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/exam/{examId}/answers", examId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "answers": [
+                                    {"questionId": %d, "answerText": "Partial snapshot must fail."}
+                                  ]
+                                }
+                                """.formatted(writingQuestionId)))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/exam/{examId}/answers", examId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "answers": [
+                                    {"questionId": %d, "selectedLabels": []},
+                                    {"questionId": %d, "answerText": "This is a saved writing answer."}
+                                  ]
+                                }
+                                """.formatted(singleQuestionId, writingQuestionId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.questions[1].answerText").value("This is a saved writing answer."));
+
+        mockMvc.perform(post("/api/exam/{examId}/start", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.questions[1].answerText").value("This is a saved writing answer."));
+
+        String submitResponse = mockMvc.perform(post("/api/exam/{examId}/submit", examId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "answers": [
+                                    {"questionId": %d, "selectedLabels": ["B"]},
+                                    {"questionId": %d, "answerText": "This is the final writing answer."}
+                                  ]
+                                }
+                                """.formatted(singleQuestionId, writingQuestionId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.gradingStatus").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$.data.objectiveScore").value(10))
+                .andExpect(jsonPath("$.data.subjectiveScore").value(0))
+                .andExpect(jsonPath("$.data.obtainedScore").value(10))
+                .andExpect(jsonPath("$.data.passed").value(false))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long resultId = objectMapper.readTree(submitResponse).at("/data/id").asLong();
+
+        mockMvc.perform(get("/api/admin/results/{resultId}", resultId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.gradingStatus").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$.data.questions[1].answerText").value("This is the final writing answer."))
+                .andExpect(jsonPath("$.data.questions[1].reviewedAt").doesNotExist());
+
+        mockMvc.perform(post("/api/admin/results/{resultId}/complete-review", resultId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value(containsString("仍有写作题未完成评分")));
+
+        mockMvc.perform(post("/api/admin/results/{resultId}/questions/{questionId}/review", resultId, writingQuestionId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"score": 12, "comment": "结构清晰"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.gradingStatus").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$.data.subjectiveScore").value(12))
+                .andExpect(jsonPath("$.data.obtainedScore").value(22))
+                .andExpect(jsonPath("$.data.questions[1].reviewComment").value("结构清晰"))
+                .andExpect(jsonPath("$.data.questions[1].reviewedAt").exists());
+
+        mockMvc.perform(get("/api/admin/results/{resultId}", resultId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.gradingStatus").value("PENDING_REVIEW"))
+                .andExpect(jsonPath("$.data.questions[1].reviewComment").value("结构清晰"));
+
+        mockMvc.perform(post("/api/admin/results/{resultId}/complete-review", resultId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.gradingStatus").value("FINAL"))
+                .andExpect(jsonPath("$.data.subjectiveScore").value(12))
+                .andExpect(jsonPath("$.data.obtainedScore").value(22))
+                .andExpect(jsonPath("$.data.passed").value(true))
+                .andExpect(jsonPath("$.data.reviewedAt").exists());
+
+        mockMvc.perform(post("/api/admin/results/{resultId}/questions/{questionId}/review", resultId, writingQuestionId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"score": 1, "comment": "不应覆盖"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("已完成阅卷")));
+
+        mockMvc.perform(post("/api/admin/results/{resultId}/complete-review", resultId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("不能重复完成阅卷")));
     }
 
     @Test
@@ -448,6 +598,136 @@ class ExamBusinessFlowTests {
     }
 
     @Test
+    void examDeleteAndDraftEditRespectAttemptLifecycleBoundaries() throws Exception {
+        String token = adminToken();
+
+        String draftResponse = createDraftExam(token, 1, """
+                "title": "可删除草稿考试",
+                "description": "用于验证草稿删除",
+                "qualifyScore": 0,
+                "startTime": "2026-01-01T00:00:00",
+                "endTime": "2026-12-31T23:59:59",
+                "durationMinutes": 20,
+                "timeLimit": false,
+                "attemptLimit": null,
+                "displayMode": "PAGED",
+                "questionOrderMode": "FIXED",
+                "openType": "PUBLIC"
+                """);
+        long draftExamId = objectMapper.readTree(draftResponse).at("/data/id").asLong();
+
+        mockMvc.perform(delete("/api/admin/exams/{examId}", draftExamId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/admin/exams/{examId}", draftExamId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isNotFound());
+
+        String publishedResponse = createDraftExam(token, 1, """
+                "title": "发布后改草稿考试",
+                "description": "用于验证发布快照清理",
+                "qualifyScore": 0,
+                "startTime": "2026-01-01T00:00:00",
+                "endTime": "2026-12-31T23:59:59",
+                "durationMinutes": 20,
+                "timeLimit": false,
+                "attemptLimit": null,
+                "displayMode": "PAGED",
+                "questionOrderMode": "FIXED",
+                "openType": "PUBLIC"
+                """);
+        long publishedExamId = objectMapper.readTree(publishedResponse).at("/data/id").asLong();
+        publishExam(token, publishedExamId);
+
+        mockMvc.perform(put("/api/admin/exams/{examId}", publishedExamId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "发布后改回草稿",
+                                  "description": "保存草稿应取消旧发布状态",
+                                  "qualifyScore": 0,
+                                  "startTime": "2026-01-01T00:00:00",
+                                  "endTime": "2026-12-31T23:59:59",
+                                  "durationMinutes": 20,
+                                  "timeLimit": false,
+                                  "attemptLimit": null,
+                                  "displayMode": "PAGED",
+                                  "questionOrderMode": "FIXED",
+                                  "openType": "PUBLIC",
+                                  "departmentIds": [],
+                                  "rules": [
+                                    {
+                                      "bankId": 1,
+                                      "singleCount": 1,
+                                      "singleScore": 10,
+                                      "multipleCount": 0,
+                                      "multipleScore": 0,
+                                      "writingCount": 0,
+                                      "writingScore": 0
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("DRAFT"))
+                .andExpect(jsonPath("$.data.title").value("发布后改回草稿"));
+
+        mockMvc.perform(post("/api/exam/{examId}/start", publishedExamId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("考试未发布")));
+
+        publishExam(token, publishedExamId);
+        mockMvc.perform(post("/api/exam/{examId}/start", publishedExamId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/admin/exams/{examId}", publishedExamId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "不应允许编辑",
+                                  "description": "",
+                                  "qualifyScore": 0,
+                                  "startTime": "2026-01-01T00:00:00",
+                                  "endTime": "2026-12-31T23:59:59",
+                                  "durationMinutes": 20,
+                                  "timeLimit": false,
+                                  "attemptLimit": null,
+                                  "displayMode": "PAGED",
+                                  "questionOrderMode": "FIXED",
+                                  "openType": "PUBLIC",
+                                  "departmentIds": [],
+                                  "rules": [
+                                    {
+                                      "bankId": 1,
+                                      "singleCount": 1,
+                                      "singleScore": 10,
+                                      "multipleCount": 0,
+                                      "multipleScore": 0,
+                                      "writingCount": 0,
+                                      "writingScore": 0
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("已有作答或成绩记录")));
+
+        mockMvc.perform(post("/api/admin/exams/{examId}/publish", publishedExamId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("不能重新发布快照")));
+
+        mockMvc.perform(delete("/api/admin/exams/{examId}", publishedExamId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("已有作答或成绩记录")));
+    }
+
+    @Test
     void serverLocksAttemptWhenDurationHasExpired() throws Exception {
         String token = adminToken();
 
@@ -481,7 +761,11 @@ class ExamBusinessFlowTests {
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"questionId": 1, "selectedLabels": ["B"]}
+                                {
+                                  "answers": [
+                                    {"questionId": 1, "selectedLabels": ["B"]}
+                                  ]
+                                }
                                 """))
                 .andExpect(status().isConflict());
 
@@ -742,6 +1026,31 @@ class ExamBusinessFlowTests {
         return objectMapper.readTree(response).at("/data/id").asLong();
     }
 
+    private long createWritingQuestion(String token, long bankId) throws Exception {
+        String response = mockMvc.perform(post("/api/admin/questions")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "bankId": %d,
+                                  "type": "WRITING",
+                                  "stem": "Write about a memorable learning experience.",
+                                  "analysis": "参考要点：结构完整，表达清晰。",
+                                  "difficulty": "HARD",
+                                  "status": "ACTIVE",
+                                  "options": [],
+                                  "attachments": []
+                                }
+                                """.formatted(bankId)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.type").value("WRITING"))
+                .andExpect(jsonPath("$.data.options.length()").value(0))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        return objectMapper.readTree(response).at("/data/id").asLong();
+    }
+
     private void updateQuestionToDifferentCorrectAnswer(String token, long bankId, long questionId) throws Exception {
         mockMvc.perform(put("/api/admin/questions/{questionId}", questionId)
                         .header("Authorization", "Bearer " + token)
@@ -769,8 +1078,13 @@ class ExamBusinessFlowTests {
     }
 
     private String createDraftExam(String token, long bankId, int singleCount, int multipleCount, String fields) throws Exception {
+        return createDraftExam(token, bankId, singleCount, multipleCount, 0, fields);
+    }
+
+    private String createDraftExam(String token, long bankId, int singleCount, int multipleCount, int writingCount, String fields) throws Exception {
         int singleScore = singleCount == 0 ? 0 : 10;
         int multipleScore = multipleCount == 0 ? 0 : 10;
+        int writingScore = writingCount == 0 ? 0 : 15;
         return mockMvc.perform(post("/api/admin/exams")
                         .header("Authorization", "Bearer " + token)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -784,11 +1098,13 @@ class ExamBusinessFlowTests {
                                       "singleCount": %d,
                                       "singleScore": %d,
                                       "multipleCount": %d,
-                                      "multipleScore": %d
+                                      "multipleScore": %d,
+                                      "writingCount": %d,
+                                      "writingScore": %d
                                     }
                                   ]
                                 }
-                                """.formatted(fields, bankId, singleCount, singleScore, multipleCount, multipleScore)))
+                                """.formatted(fields, bankId, singleCount, singleScore, multipleCount, multipleScore, writingCount, writingScore)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DRAFT"))
                 .andReturn()

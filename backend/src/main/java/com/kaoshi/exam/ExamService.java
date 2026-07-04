@@ -7,7 +7,7 @@ import com.kaoshi.common.page.PageRequest;
 import com.kaoshi.common.page.PageResponse;
 import com.kaoshi.exam.domain.Exam;
 import com.kaoshi.exam.dto.AnswerSubmitItem;
-import com.kaoshi.exam.dto.ExamAnswerSaveRequest;
+import com.kaoshi.exam.dto.ExamAnswerSnapshotRequest;
 import com.kaoshi.exam.dto.ExamPaperQuestionRequest;
 import com.kaoshi.exam.dto.ExamPaperQuestionResponse;
 import com.kaoshi.exam.dto.ExamQuestionOptionResponse;
@@ -21,7 +21,9 @@ import com.kaoshi.exam.dto.ExamRuleResponse;
 import com.kaoshi.exam.dto.ExamSaveRequest;
 import com.kaoshi.exam.dto.ExamSessionResponse;
 import com.kaoshi.exam.dto.ExamSubmitRequest;
+import com.kaoshi.exam.dto.WritingReviewRequest;
 import com.kaoshi.exam.mapper.ExamMapper;
+import com.kaoshi.question.QuestionType;
 import com.kaoshi.question.dto.QuestionAttachmentResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -41,8 +43,8 @@ import java.util.Set;
 
 @Service
 public class ExamService {
-    private static final String SINGLE_CHOICE = "SINGLE_CHOICE";
-    private static final String MULTIPLE_CHOICE = "MULTIPLE_CHOICE";
+    private static final String GRADING_PENDING_REVIEW = "PENDING_REVIEW";
+    private static final String GRADING_FINAL = "FINAL";
     private static final Duration SUBMIT_GRACE = Duration.ofSeconds(30);
 
     private final ExamMapper examMapper;
@@ -80,6 +82,8 @@ public class ExamService {
     public ExamResponse update(Long id, ExamSaveRequest request) {
         validateDraft(request);
         Exam exam = findExam(id);
+        ensureExamEditableAsDraft(exam);
+        clearPublishedSnapshotIfPresent(id);
         fillExam(exam, request, "DRAFT");
         examMapper.updateExam(exam);
         replaceExamDepartments(id, request.departmentIds());
@@ -91,6 +95,7 @@ public class ExamService {
     @Transactional
     public ExamResponse publish(Long id) {
         Exam exam = findExam(id);
+        ensureExamPublishable(exam);
         List<Map<String, Object>> rules = examMapper.findExamRules(id);
         validatePublish(exam, rules);
         rebuildPublishedSnapshot(id);
@@ -103,6 +108,21 @@ public class ExamService {
         findExam(id);
         examMapper.updateExamStatus(id, "CLOSED");
         return detail(id);
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        findExam(id);
+        if (examMapper.countAttemptsByExam(id) > 0 || examMapper.countResultsByExam(id) > 0) {
+            throw new BusinessException(ErrorCode.CONFLICT, "考试已有作答或成绩记录，不能删除，请关闭考试保留历史");
+        }
+        clearPublishedSnapshotIfPresent(id);
+        examMapper.deleteDraftAttachments(id);
+        examMapper.deleteDraftOptions(id);
+        examMapper.deleteDraftQuestions(id);
+        examMapper.deleteExamRules(id);
+        examMapper.deleteExamDepartments(id);
+        examMapper.deleteExam(id);
     }
 
     @Transactional
@@ -153,9 +173,7 @@ public class ExamService {
         if (examMapper.countAttemptsByExam(id) > 0 || examMapper.countResultsByExam(id) > 0) {
             throw new BusinessException(ErrorCode.CONFLICT, "考试已有作答记录，不能撤销发布");
         }
-        examMapper.deletePublishedAttachments(id);
-        examMapper.deletePublishedOptions(id);
-        examMapper.deletePublishedQuestions(id);
+        clearPublishedSnapshotIfPresent(id);
         examMapper.updateExamStatus(id, "DRAFT");
         return detail(id);
     }
@@ -197,13 +215,13 @@ public class ExamService {
     }
 
     @Transactional
-    public ExamSessionResponse saveAnswer(Long examId, Long userId, ExamAnswerSaveRequest request) {
+    public ExamSessionResponse saveAnswerSnapshot(Long examId, Long userId, ExamAnswerSnapshotRequest request) {
         Exam exam = findExam(examId);
         ensureExamAvailable(exam);
         ensureExamOpenToUser(exam, userId);
         Map<String, Object> attempt = findRunningAttempt(examId, userId);
         ensureAttemptCanContinue(exam, attempt);
-        saveAnswerForAttempt(longValue(value(attempt, "id")), request.questionId(), request.selectedLabels(), false, BigDecimal.ZERO);
+        saveAnswerSnapshotForAttempt(longValue(value(attempt, "id")), request.answers());
         return sessionResponse(exam, attempt);
     }
 
@@ -212,30 +230,33 @@ public class ExamService {
         Exam exam = findExam(examId);
         ensureExamAvailable(exam);
         ensureExamOpenToUser(exam, userId);
-        for (AnswerSubmitItem answer : request.answers()) {
-            normalizedLabels(answer.selectedLabels());
-        }
         Map<String, Object> attempt = findRunningAttempt(examId, userId);
         if (isAttemptPastDeadline(exam, attempt, SUBMIT_GRACE)) {
             return gradeAndLockAttempt(exam, attempt);
         }
         Long attemptId = longValue(value(attempt, "id"));
-        for (AnswerSubmitItem answer : request.answers()) {
-            saveAnswerForAttempt(attemptId, answer.questionId(), answer.selectedLabels(), false, BigDecimal.ZERO);
-        }
+        saveAnswerSnapshotForAttempt(attemptId, request.answers());
         return gradeAndLockAttempt(exam, attempt);
     }
 
     private ExamResultResponse gradeAndLockAttempt(Exam exam, Map<String, Object> attempt) {
         BigDecimal totalScore = BigDecimal.ZERO;
         BigDecimal obtainedScore = BigDecimal.ZERO;
+        BigDecimal objectiveScore = BigDecimal.ZERO;
         int correctCount = 0;
+        boolean hasWriting = false;
         Long attemptId = longValue(value(attempt, "id"));
         List<Map<String, Object>> questions = examMapper.findAttemptQuestions(attemptId);
         for (Map<String, Object> question : questions) {
             Long attemptQuestionId = longValue(value(question, "id"));
             BigDecimal questionScore = decimalValue(value(question, "score"));
             totalScore = totalScore.add(questionScore);
+            if (QuestionType.require(stringValue(value(question, "type"))).manualReview()) {
+                hasWriting = true;
+                String answerText = examMapper.findAnswerText(attemptQuestionId);
+                examMapper.upsertWritingAnswer(attemptId, attemptQuestionId, answerText == null ? "" : answerText);
+                continue;
+            }
             List<String> selected = splitLabels(examMapper.findSelectedLabels(attemptQuestionId));
             List<String> correct = normalizedLabels(examMapper.findAttemptCorrectLabels(attemptQuestionId));
             boolean right = selected.equals(correct);
@@ -243,8 +264,9 @@ public class ExamService {
             if (right) {
                 correctCount++;
                 obtainedScore = obtainedScore.add(score);
+                objectiveScore = objectiveScore.add(score);
             }
-            examMapper.upsertAnswer(attemptId, attemptQuestionId, String.join(",", selected), right, score);
+            examMapper.upsertAnswer(attemptId, attemptQuestionId, String.join(",", selected), null, right, score);
         }
 
         LocalDateTime submittedAt = LocalDateTime.now();
@@ -260,8 +282,11 @@ public class ExamService {
         result.put("userId", longValue(value(attempt, "userId")));
         result.put("totalScore", totalScore);
         result.put("obtainedScore", obtainedScore);
+        result.put("objectiveScore", objectiveScore);
+        result.put("subjectiveScore", BigDecimal.ZERO);
         result.put("correctCount", correctCount);
         result.put("questionCount", questions.size());
+        result.put("gradingStatus", hasWriting ? GRADING_PENDING_REVIEW : GRADING_FINAL);
         result.put("submittedAt", submittedAt);
         examMapper.insertResult(result);
         return new ExamResultResponse(
@@ -275,9 +300,12 @@ public class ExamService {
                 null,
                 totalScore,
                 obtainedScore,
+                objectiveScore,
+                BigDecimal.ZERO,
                 correctCount,
                 questions.size(),
-                obtainedScore.compareTo(exam.getQualifyScore()) >= 0,
+                hasWriting ? GRADING_PENDING_REVIEW : GRADING_FINAL,
+                !hasWriting && obtainedScore.compareTo(exam.getQualifyScore()) >= 0,
                 submittedAt
         );
     }
@@ -294,12 +322,76 @@ public class ExamService {
         return toResultDetailResponse(findResult(resultId));
     }
 
+    @Transactional
+    public ExamResultDetailResponse reviewWriting(Long resultId, Long questionId, Long reviewerId, WritingReviewRequest request) {
+        Map<String, Object> result = findResult(resultId);
+        if (GRADING_FINAL.equals(stringValue(value(result, "gradingStatus")))) {
+            throw new BusinessException(ErrorCode.CONFLICT, "成绩已完成阅卷，不能再次保存评分");
+        }
+        Map<String, Object> question = examMapper.findResultQuestionForReview(resultId, questionId);
+        if (question == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "成绩题目不存在");
+        }
+        if (!QuestionType.require(stringValue(value(question, "type"))).manualReview()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "只有写作题需要人工阅卷");
+        }
+        BigDecimal maxScore = decimalValue(value(question, "score"));
+        if (request.score().compareTo(maxScore) > 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "写作题得分不能超过题目分值");
+        }
+        LocalDateTime reviewedAt = LocalDateTime.now();
+        int updated = examMapper.updateWritingReview(
+                longValue(value(question, "id")),
+                request.score(),
+                request.comment(),
+                reviewerId,
+                reviewedAt
+        );
+        if (updated != 1) {
+            throw new BusinessException(ErrorCode.CONFLICT, "写作题阅卷保存失败");
+        }
+        recalculateResult(resultId, GRADING_PENDING_REVIEW, null);
+        return adminResultDetail(resultId);
+    }
+
+    @Transactional
+    public ExamResultDetailResponse completeReview(Long resultId, Long reviewerId) {
+        Map<String, Object> result = findResult(resultId);
+        if (GRADING_FINAL.equals(stringValue(value(result, "gradingStatus")))) {
+            throw new BusinessException(ErrorCode.CONFLICT, "成绩已完成阅卷，不能重复完成阅卷");
+        }
+        if (examMapper.countWritingQuestionsByResult(resultId) == 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "该成绩没有需要人工阅卷的写作题");
+        }
+        if (examMapper.countPendingWritingReviews(resultId) > 0) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "仍有写作题未完成评分");
+        }
+        recalculateResult(resultId, GRADING_FINAL, LocalDateTime.now());
+        return adminResultDetail(resultId);
+    }
+
     public ExamResultDetailResponse userResultDetail(Long resultId, Long userId) {
         Map<String, Object> result = findResult(resultId);
         if (!userId.equals(longValue(value(result, "userId")))) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "成绩不存在");
         }
         return toResultDetailResponse(result);
+    }
+
+    private void recalculateResult(Long resultId, String gradingStatus, LocalDateTime reviewedAt) {
+        BigDecimal objectiveScore = examMapper.sumObjectiveScore(resultId);
+        BigDecimal subjectiveScore = examMapper.sumSubjectiveScore(resultId);
+        BigDecimal obtainedScore = objectiveScore.add(subjectiveScore);
+        int correctCount = examMapper.countCorrectObjectiveAnswers(resultId);
+        examMapper.updateResultAfterReview(
+                resultId,
+                obtainedScore,
+                objectiveScore,
+                subjectiveScore,
+                correctCount,
+                gradingStatus,
+                reviewedAt
+        );
     }
 
     private Exam findExam(Long id) {
@@ -316,6 +408,35 @@ public class ExamService {
             throw new BusinessException(ErrorCode.NOT_FOUND, "成绩不存在");
         }
         return result;
+    }
+
+    private void ensureExamEditableAsDraft(Exam exam) {
+        if ("CLOSED".equals(exam.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "考试已关闭，不能编辑草稿");
+        }
+        if (!"DRAFT".equals(exam.getStatus())
+                && (examMapper.countAttemptsByExam(exam.getId()) > 0 || examMapper.countResultsByExam(exam.getId()) > 0)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "考试已有作答或成绩记录，不能改回草稿");
+        }
+    }
+
+    private void ensureExamPublishable(Exam exam) {
+        if ("CLOSED".equals(exam.getStatus())) {
+            throw new BusinessException(ErrorCode.CONFLICT, "考试已关闭，不能发布");
+        }
+        if ("PUBLISHED".equals(exam.getStatus())
+                && (examMapper.countAttemptsByExam(exam.getId()) > 0 || examMapper.countResultsByExam(exam.getId()) > 0)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "考试已有作答或成绩记录，不能重新发布快照");
+        }
+    }
+
+    private void clearPublishedSnapshotIfPresent(Long examId) {
+        if (examMapper.countPublishedQuestions(examId) == 0) {
+            return;
+        }
+        examMapper.deletePublishedAttachments(examId);
+        examMapper.deletePublishedOptions(examId);
+        examMapper.deletePublishedQuestions(examId);
     }
 
     private void validateDraft(ExamSaveRequest request) {
@@ -343,8 +464,9 @@ public class ExamService {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "考试结束时间必须晚于开始时间");
         }
         for (Map<String, Object> rule : rules) {
-            validateRuleAvailability(rule, SINGLE_CHOICE);
-            validateRuleAvailability(rule, MULTIPLE_CHOICE);
+            for (QuestionType type : QuestionType.ruleOrder()) {
+                validateRuleAvailability(rule, type);
+            }
         }
         List<Map<String, Object>> draftQuestions = examMapper.findDraftQuestions(exam.getId());
         if (draftQuestions.isEmpty()) {
@@ -373,6 +495,8 @@ public class ExamService {
             rule.put("singleScore", decimalValue(value(source, "singleScore")));
             rule.put("multipleCount", intValue(value(source, "multipleCount")));
             rule.put("multipleScore", decimalValue(value(source, "multipleScore")));
+            rule.put("writingCount", intValue(value(source, "writingCount")));
+            rule.put("writingScore", decimalValue(value(source, "writingScore")));
             rule.put("sortOrder", intValue(value(source, "sortOrder")));
             examMapper.insertExamRule(rule);
         }
@@ -424,7 +548,7 @@ public class ExamService {
     }
 
     private String questionTypeName(String type) {
-        return MULTIPLE_CHOICE.equals(type) ? "多选题" : "单选题";
+        return QuestionType.require(type).label();
     }
 
     private String safeString(Object value) {
@@ -444,27 +568,48 @@ public class ExamService {
     private BigDecimal calculateRulePublishScore(List<Map<String, Object>> rules) {
         BigDecimal totalScore = BigDecimal.ZERO;
         for (Map<String, Object> rule : rules) {
-            totalScore = totalScore.add(validateRuleAvailability(rule, SINGLE_CHOICE));
-            totalScore = totalScore.add(validateRuleAvailability(rule, MULTIPLE_CHOICE));
+            for (QuestionType type : QuestionType.ruleOrder()) {
+                totalScore = totalScore.add(validateRuleAvailability(rule, type));
+            }
         }
         return totalScore;
     }
 
-    private BigDecimal validateRuleAvailability(Map<String, Object> rule, String type) {
+    private BigDecimal validateRuleAvailability(Map<String, Object> rule, QuestionType type) {
         Long bankId = longValue(value(rule, "bankId"));
-        int count = SINGLE_CHOICE.equals(type) ? intValue(value(rule, "singleCount")) : intValue(value(rule, "multipleCount"));
-        BigDecimal score = SINGLE_CHOICE.equals(type) ? decimalValue(value(rule, "singleScore")) : decimalValue(value(rule, "multipleScore"));
+        int count = ruleCount(rule, type);
+        BigDecimal score = ruleScore(rule, type);
         if (count == 0 && score.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO;
         }
         if (count <= 0 || score.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题量和分值必须同时大于 0");
         }
-        int available = examMapper.countActiveQuestions(bankId, type);
+        int available = examMapper.countActiveQuestions(bankId, type.code());
         if (count > available) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题库题量不足：" + examMapper.findBankName(bankId));
         }
         return score.multiply(BigDecimal.valueOf(count));
+    }
+
+    private int ruleCount(Map<String, Object> rule, QuestionType type) {
+        if (type == QuestionType.SINGLE_CHOICE) {
+            return intValue(value(rule, "singleCount"));
+        }
+        if (type == QuestionType.MULTIPLE_CHOICE) {
+            return intValue(value(rule, "multipleCount"));
+        }
+        return intValue(value(rule, "writingCount"));
+    }
+
+    private BigDecimal ruleScore(Map<String, Object> rule, QuestionType type) {
+        if (type == QuestionType.SINGLE_CHOICE) {
+            return decimalValue(value(rule, "singleScore"));
+        }
+        if (type == QuestionType.MULTIPLE_CHOICE) {
+            return decimalValue(value(rule, "multipleScore"));
+        }
+        return decimalValue(value(rule, "writingScore"));
     }
 
     private void validateDepartments(List<Long> departmentIds) {
@@ -532,6 +677,8 @@ public class ExamService {
             rule.put("singleScore", request.singleScore());
             rule.put("multipleCount", request.multipleCount());
             rule.put("multipleScore", request.multipleScore());
+            rule.put("writingCount", request.writingCount() == null ? 0 : request.writingCount());
+            rule.put("writingScore", request.writingScore() == null ? BigDecimal.ZERO : request.writingScore());
             rule.put("sortOrder", sort);
             examMapper.insertExamRule(rule);
             sort += 10;
@@ -574,8 +721,16 @@ public class ExamService {
         }
         int sort = 10;
         for (ExamRuleRequest rule : rules) {
-            sort = draftQuestions(examId, rule.bankId(), SINGLE_CHOICE, rule.singleCount(), rule.singleScore(), sort);
-            sort = draftQuestions(examId, rule.bankId(), MULTIPLE_CHOICE, rule.multipleCount(), rule.multipleScore(), sort);
+            sort = draftQuestions(examId, rule.bankId(), QuestionType.SINGLE_CHOICE.code(), rule.singleCount(), rule.singleScore(), sort);
+            sort = draftQuestions(examId, rule.bankId(), QuestionType.MULTIPLE_CHOICE.code(), rule.multipleCount(), rule.multipleScore(), sort);
+            sort = draftQuestions(
+                    examId,
+                    rule.bankId(),
+                    QuestionType.WRITING.code(),
+                    rule.writingCount() == null ? 0 : rule.writingCount(),
+                    rule.writingScore() == null ? BigDecimal.ZERO : rule.writingScore(),
+                    sort
+            );
         }
     }
 
@@ -687,16 +842,46 @@ public class ExamService {
         return LocalDateTime.now().isAfter(deadline);
     }
 
-    private void saveAnswerForAttempt(Long attemptId, Long questionId, List<String> selectedLabels, boolean correct, BigDecimal score) {
-        Map<String, Object> attemptQuestion = examMapper.findAttemptQuestionBySource(attemptId, questionId);
-        if (attemptQuestion == null) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目不属于本次作答");
+    private void saveAnswerSnapshotForAttempt(Long attemptId, List<AnswerSubmitItem> answers) {
+        List<Map<String, Object>> attemptQuestions = examMapper.findAttemptQuestions(attemptId);
+        if (answers.size() != attemptQuestions.size()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "答案快照必须包含本次作答的全部题目");
+        }
+        Map<Long, AnswerSubmitItem> answersByQuestionId = new HashMap<>();
+        for (AnswerSubmitItem answer : answers) {
+            AnswerSubmitItem previous = answersByQuestionId.put(answer.questionId(), answer);
+            if (previous != null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "答案快照存在重复题目");
+            }
+        }
+        for (Map<String, Object> attemptQuestion : attemptQuestions) {
+            Long questionId = longValue(value(attemptQuestion, "sourceQuestionId"));
+            AnswerSubmitItem answer = answersByQuestionId.remove(questionId);
+            if (answer == null) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "答案快照缺少本次作答题目");
+            }
+            saveAnswerForAttemptQuestion(attemptId, attemptQuestion, answer.selectedLabels(), answer.answerText(), false, BigDecimal.ZERO);
+        }
+        if (!answersByQuestionId.isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "答案快照包含不属于本次作答的题目");
+        }
+    }
+
+    private void saveAnswerForAttemptQuestion(Long attemptId, Map<String, Object> attemptQuestion, List<String> selectedLabels, String answerText, boolean correct, BigDecimal score) {
+        if (QuestionType.require(stringValue(value(attemptQuestion, "type"))).manualReview()) {
+            examMapper.upsertWritingAnswer(
+                    attemptId,
+                    longValue(value(attemptQuestion, "id")),
+                    answerText == null ? "" : answerText
+            );
+            return;
         }
         List<String> selected = normalizedLabels(selectedLabels);
         examMapper.upsertAnswer(
                 attemptId,
                 longValue(value(attemptQuestion, "id")),
                 String.join(",", selected),
+                null,
                 correct,
                 score
         );
@@ -753,6 +938,7 @@ public class ExamService {
                 decimalValue(value(row, "score")),
                 intValue(value(row, "displayOrder")),
                 splitLabels(stringValue(value(row, "selectedLabels"))),
+                stringValue(value(row, "answerText")),
                 examMapper.findAttemptAttachments(attemptQuestionId).stream().map(this::toAttachmentResponse).toList(),
                 examMapper.findAttemptOptions(attemptQuestionId).stream().map(this::toOptionResponse).toList()
         );
@@ -824,6 +1010,8 @@ public class ExamService {
                 decimalValue(value(row, "singleScore")),
                 intValue(value(row, "multipleCount")),
                 decimalValue(value(row, "multipleScore")),
+                intValue(value(row, "writingCount")),
+                decimalValue(value(row, "writingScore")),
                 intValue(value(row, "sortOrder"))
         );
     }
@@ -843,13 +1031,14 @@ public class ExamService {
     private BigDecimal calculateRuleScore(List<Map<String, Object>> rules) {
         return rules.stream()
                 .map(rule -> decimalValue(value(rule, "singleScore")).multiply(BigDecimal.valueOf(intValue(value(rule, "singleCount"))))
-                        .add(decimalValue(value(rule, "multipleScore")).multiply(BigDecimal.valueOf(intValue(value(rule, "multipleCount"))))))
+                        .add(decimalValue(value(rule, "multipleScore")).multiply(BigDecimal.valueOf(intValue(value(rule, "multipleCount")))))
+                        .add(decimalValue(value(rule, "writingScore")).multiply(BigDecimal.valueOf(intValue(value(rule, "writingCount"))))))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private int calculateRuleCount(List<Map<String, Object>> rules) {
         return rules.stream()
-                .mapToInt(rule -> intValue(value(rule, "singleCount")) + intValue(value(rule, "multipleCount")))
+                .mapToInt(rule -> intValue(value(rule, "singleCount")) + intValue(value(rule, "multipleCount")) + intValue(value(rule, "writingCount")))
                 .sum();
     }
 
@@ -865,8 +1054,11 @@ public class ExamService {
                 stringValue(value(row, "departmentName")),
                 decimalValue(value(row, "totalScore")),
                 decimalValue(value(row, "obtainedScore")),
+                decimalValue(value(row, "objectiveScore")),
+                decimalValue(value(row, "subjectiveScore")),
                 intValue(value(row, "correctCount")),
                 intValue(value(row, "questionCount")),
+                stringValue(value(row, "gradingStatus")),
                 booleanValue(value(row, "passed")),
                 dateTimeValue(value(row, "submittedAt"))
         );
@@ -885,10 +1077,14 @@ public class ExamService {
                 stringValue(value(row, "departmentName")),
                 decimalValue(value(row, "totalScore")),
                 decimalValue(value(row, "obtainedScore")),
+                decimalValue(value(row, "objectiveScore")),
+                decimalValue(value(row, "subjectiveScore")),
                 intValue(value(row, "correctCount")),
                 intValue(value(row, "questionCount")),
+                stringValue(value(row, "gradingStatus")),
                 booleanValue(value(row, "passed")),
                 dateTimeValue(value(row, "submittedAt")),
+                dateTimeValueOrNull(value(row, "reviewedAt")),
                 examMapper.findResultQuestions(attemptId).stream()
                         .map(this::toResultQuestionResponse)
                         .toList()
@@ -906,14 +1102,21 @@ public class ExamService {
                 decimalValue(value(row, "obtainedScore")),
                 intValue(value(row, "sortOrder")),
                 splitLabels(stringValue(value(row, "selectedLabels"))),
+                stringValue(value(row, "answerText")),
                 normalizedLabels(examMapper.findAttemptCorrectLabels(attemptQuestionId)),
                 booleanValue(value(row, "correct")),
+                stringValue(value(row, "reviewComment")),
+                stringValue(value(row, "reviewerName")),
+                dateTimeValueOrNull(value(row, "reviewedAt")),
                 examMapper.findAttemptAttachments(attemptQuestionId).stream().map(this::toAttachmentResponse).toList(),
                 examMapper.findAttemptOptions(attemptQuestionId).stream().map(this::toOptionResponse).toList()
         );
     }
 
     private List<String> normalizedLabels(List<String> labels) {
+        if (labels == null) {
+            return List.of();
+        }
         return labels.stream()
                 .map(String::trim)
                 .filter(label -> !label.isBlank())
@@ -969,6 +1172,9 @@ public class ExamService {
     }
 
     private Boolean booleanValue(Object value) {
+        if (value == null) {
+            return null;
+        }
         if (value instanceof Boolean bool) {
             return bool;
         }
@@ -986,5 +1192,9 @@ public class ExamService {
             return timestamp.toLocalDateTime();
         }
         return LocalDateTime.parse(value.toString());
+    }
+
+    private LocalDateTime dateTimeValueOrNull(Object value) {
+        return value == null ? null : dateTimeValue(value);
     }
 }

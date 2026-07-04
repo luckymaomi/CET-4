@@ -48,7 +48,7 @@
               </el-checkbox>
             </el-checkbox-group>
             <el-radio-group
-              v-else
+              v-else-if="currentQuestion.type === 'SINGLE_CHOICE'"
               v-model="singleAnswers[currentQuestion.questionId]"
               class="answer-options"
               :disabled="submitting || submitted"
@@ -58,6 +58,19 @@
                 {{ option.label }}. {{ option.content }}
               </el-radio>
             </el-radio-group>
+            <el-input
+              v-else-if="currentQuestion.type === 'WRITING'"
+              v-model="textAnswers[currentQuestion.questionId]"
+              type="textarea"
+              :rows="8"
+              maxlength="5000"
+              show-word-limit
+              resize="vertical"
+              placeholder="请输入写作答案"
+              :disabled="submitting || submitted"
+              @input="scheduleSave(currentQuestion)"
+              @blur="saveImmediately(currentQuestion)"
+            />
 
             <div class="question-nav">
               <el-button :disabled="currentIndex === 0" @click="previousQuestion">上一题</el-button>
@@ -114,7 +127,7 @@
                 </el-checkbox>
               </el-checkbox-group>
               <el-radio-group
-                v-else
+                v-else-if="question.type === 'SINGLE_CHOICE'"
                 v-model="singleAnswers[question.questionId]"
                 class="answer-options"
                 :disabled="submitting || submitted"
@@ -124,6 +137,19 @@
                   {{ option.label }}. {{ option.content }}
                 </el-radio>
               </el-radio-group>
+              <el-input
+                v-else-if="question.type === 'WRITING'"
+                v-model="textAnswers[question.questionId]"
+                type="textarea"
+                :rows="8"
+                maxlength="5000"
+                show-word-limit
+                resize="vertical"
+                placeholder="请输入写作答案"
+                :disabled="submitting || submitted"
+                @input="scheduleSave(question)"
+                @blur="saveImmediately(question)"
+              />
             </article>
             <div class="question-submit-row">
               <el-button type="primary" :loading="submitting" :disabled="submitted" @click="confirmSubmit">提交试卷</el-button>
@@ -165,7 +191,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'v
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-import { saveExamAnswer, startExam, submitExam, type ExamQuestion, type ExamSession } from '@/api/exam-business'
+import { useAnswerSnapshotSaver } from '@/composables/use-answer-snapshot-saver'
+import { saveExamAnswers, startExam, submitExam, type ExamQuestion, type ExamSession } from '@/api/exam-business'
 import {
   buildSubmitAnswers,
   countAnsweredQuestions,
@@ -173,7 +200,9 @@ import {
   isQuestionAnswered,
   type MultipleAnswerMap,
   type SingleAnswerMap,
+  type TextAnswerMap,
 } from '@/utils/exam-session'
+import { questionTypeText } from '@/utils/question-types'
 
 const route = useRoute()
 const router = useRouter()
@@ -183,29 +212,30 @@ const submitting = ref(false)
 const submitted = ref(false)
 const remainingSeconds = ref(0)
 const currentIndex = ref(0)
-const savingAnswers = ref(0)
-const lastSavedAt = ref<Date | null>(null)
-const saveFailed = ref(false)
 let countdownTimer: number | undefined
-const saveTimers = new Map<number, number>()
 
 const multipleAnswers = reactive<MultipleAnswerMap>({})
 const singleAnswers = reactive<SingleAnswerMap>({})
+const textAnswers = reactive<TextAnswerMap>({})
+const answerSaver = useAnswerSnapshotSaver({
+  saveSnapshot: async () => {
+    if (!session.value) {
+      return
+    }
+    await saveExamAnswers(session.value.examId, buildSubmitAnswers(session.value.questions, singleAnswers, multipleAnswers, textAnswers))
+  },
+  canSave: () => Boolean(session.value && !submitted.value),
+  onAutoSaveError: () => {
+    ElMessage.error('答案保存失败，请检查网络后重试')
+  },
+})
 
 const remainingText = computed(() => formatRemainingTime(remainingSeconds.value))
 const currentQuestion = computed(() => session.value?.questions[currentIndex.value] ?? null)
-const answeredCount = computed(() => countAnsweredQuestions(session.value?.questions ?? [], singleAnswers, multipleAnswers))
+const answeredCount = computed(() => countAnsweredQuestions(session.value?.questions ?? [], singleAnswers, multipleAnswers, textAnswers))
 const unansweredCount = computed(() => Math.max(0, (session.value?.questions.length ?? 0) - answeredCount.value))
 const hasActiveAttempt = computed(() => Boolean(session.value && !submitted.value))
-const saveStatusText = computed(() => {
-  if (saveFailed.value) {
-    return '答案保存失败'
-  }
-  if (savingAnswers.value > 0) {
-    return '答案保存中'
-  }
-  return lastSavedAt.value ? '答案已保存' : '答案待保存'
-})
+const saveStatusText = answerSaver.saveStatusText
 const groupedQuestions = computed<QuestionGroup[]>(() => {
   const questions = session.value?.questions ?? []
   const groups: QuestionGroup[] = [
@@ -218,6 +248,11 @@ const groupedQuestions = computed<QuestionGroup[]>(() => {
       type: 'MULTIPLE_CHOICE',
       title: '多选题',
       questions: questions.filter((question) => question.type === 'MULTIPLE_CHOICE'),
+    },
+    {
+      type: 'WRITING',
+      title: '写作题',
+      questions: questions.filter((question) => question.type === 'WRITING'),
     },
   ]
   return groups.filter((group) => group.questions.length > 0)
@@ -236,13 +271,28 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopCountdown()
-  clearSaveTimers()
+  answerSaver.clearScheduledSave()
   window.removeEventListener('beforeunload', preventUnload)
 })
 
 onBeforeRouteLeave(async () => {
   if (!hasActiveAttempt.value) {
     return true
+  }
+  if (answerSaver.hasPendingSave.value) {
+    try {
+      await flushAnswerSaves()
+    } catch {
+      try {
+        await ElMessageBox.confirm('仍有答案保存失败，离开可能丢失最近修改。', '离开考试', {
+          confirmButtonText: '离开',
+          cancelButtonText: '继续作答',
+          type: 'warning',
+        })
+      } catch {
+        return false
+      }
+    }
   }
   try {
     await ElMessageBox.confirm('离开后本次作答仍在进行，未提交答案不会被锁定。', '离开考试', {
@@ -277,11 +327,15 @@ function initializeAnswers(currentSession: ExamSession) {
   for (const question of currentSession.questions) {
     if (question.type === 'MULTIPLE_CHOICE') {
       multipleAnswers[question.questionId] = [...question.selectedLabels]
-    } else {
+    } else if (question.type === 'SINGLE_CHOICE') {
       singleAnswers[question.questionId] = question.selectedLabels[0] || ''
+    } else if (question.type === 'WRITING') {
+      textAnswers[question.questionId] = question.answerText || ''
     }
   }
-  lastSavedAt.value = currentSession.questions.some((question) => question.selectedLabels.length > 0) ? new Date() : null
+  answerSaver.lastSavedAt.value = currentSession.questions.some((question) => question.selectedLabels.length > 0 || Boolean(question.answerText?.trim()))
+    ? new Date()
+    : null
 }
 
 function startCountdown(currentSession: ExamSession) {
@@ -306,7 +360,7 @@ function stopCountdown() {
 }
 
 function isAnswered(question: ExamQuestion) {
-  return isQuestionAnswered(question, singleAnswers, multipleAnswers)
+  return isQuestionAnswered(question, singleAnswers, multipleAnswers, textAnswers)
 }
 
 function questionGlobalIndex(questionId: number) {
@@ -352,7 +406,7 @@ async function submit(autoSubmit: boolean) {
   submitting.value = true
   try {
     await flushAnswerSaves()
-    const payload = buildSubmitAnswers(session.value.questions, singleAnswers, multipleAnswers)
+    const payload = buildSubmitAnswers(session.value.questions, singleAnswers, multipleAnswers, textAnswers)
     const result = await submitExam(session.value.examId, payload)
     submitted.value = true
     stopCountdown()
@@ -364,77 +418,28 @@ async function submit(autoSubmit: boolean) {
 }
 
 function scheduleSave(question: ExamQuestion) {
-  if (!session.value || submitted.value) {
-    return
-  }
-  saveFailed.value = false
-  const existing = saveTimers.get(question.questionId)
-  if (existing) {
-    window.clearTimeout(existing)
-  }
-  const timer = window.setTimeout(() => {
-    saveTimers.delete(question.questionId)
-    void saveQuestionAnswer(question).catch(() => {
-      ElMessage.error('答案保存失败，请检查网络后重试')
-    })
-  }, 300)
-  saveTimers.set(question.questionId, timer)
+  answerSaver.scheduleSave(question.questionId)
+}
+
+function saveImmediately(question: ExamQuestion) {
+  answerSaver.saveImmediately(question.questionId)
 }
 
 async function flushAnswerSaves() {
   if (!session.value) {
     return
   }
-  clearSaveTimers()
-  await Promise.all(session.value.questions.map((question) => saveQuestionAnswer(question)))
-}
-
-function clearSaveTimers() {
-  for (const timer of saveTimers.values()) {
-    window.clearTimeout(timer)
-  }
-  saveTimers.clear()
-}
-
-async function saveQuestionAnswer(question: ExamQuestion) {
-  if (!session.value || submitted.value) {
-    return
-  }
-  savingAnswers.value += 1
-  try {
-    await saveExamAnswer(session.value.examId, {
-      questionId: question.questionId,
-      selectedLabels: selectedLabels(question),
-    })
-    saveFailed.value = false
-    lastSavedAt.value = new Date()
-  } catch (error) {
-    saveFailed.value = true
-    throw error
-  } finally {
-    savingAnswers.value = Math.max(0, savingAnswers.value - 1)
-  }
-}
-
-function selectedLabels(question: ExamQuestion) {
-  if (question.type === 'MULTIPLE_CHOICE') {
-    return [...(multipleAnswers[question.questionId] || [])].sort()
-  }
-  const selected = singleAnswers[question.questionId]
-  return selected ? [selected] : []
+  await answerSaver.flushSaves(session.value.questions.map((question) => question.questionId))
 }
 
 function preventUnload(event: BeforeUnloadEvent) {
-  if (!hasActiveAttempt.value) {
+  if (!hasActiveAttempt.value || !answerSaver.hasPendingSave.value) {
     return
   }
   event.preventDefault()
   event.returnValue = ''
 }
 
-function questionTypeText(type: ExamQuestion['type']) {
-  return type === 'MULTIPLE_CHOICE' ? '多选题' : '单选题'
-}
 </script>
 
 <style scoped>

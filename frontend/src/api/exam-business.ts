@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type { ApiResponse } from './types'
 import type { ExcelImportResult, PageResult } from './admin'
+import type { QuestionTypeCode } from '@/utils/question-types'
 
 export interface NamedCategory {
   id: number
@@ -25,6 +26,7 @@ export interface QuestionBank {
   questionCount: number
   singleChoiceCount: number
   multipleChoiceCount: number
+  writingCount: number
 }
 
 export interface QuestionBankPayload {
@@ -61,7 +63,7 @@ export interface QuestionAttachment extends QuestionAttachmentPayload {
 
 export interface QuestionPayload {
   bankId: number
-  type: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE'
+  type: QuestionTypeCode
   stem: string
   analysis: string
   difficulty: 'EASY' | 'HARD'
@@ -106,6 +108,8 @@ export interface ExamRulePayload {
   singleScore: number
   multipleCount: number
   multipleScore: number
+  writingCount: number
+  writingScore: number
 }
 
 export interface ExamRule extends ExamRulePayload {
@@ -162,6 +166,7 @@ export interface ExamQuestion {
   score: number
   sortOrder: number
   selectedLabels: string[]
+  answerText: string | null
   attachments: QuestionAttachment[]
   options: ExamQuestionOption[]
 }
@@ -188,8 +193,11 @@ export interface ExamResult {
   departmentName: string | null
   totalScore: number
   obtainedScore: number
+  objectiveScore: number
+  subjectiveScore: number
   correctCount: number
   questionCount: number
+  gradingStatus: 'PENDING_REVIEW' | 'FINAL'
   passed: boolean
   submittedAt: string
 }
@@ -203,8 +211,12 @@ export interface ExamResultQuestion {
   obtainedScore: number
   sortOrder: number
   selectedLabels: string[]
+  answerText: string | null
   correctLabels: string[]
-  correct: boolean
+  correct: boolean | null
+  reviewComment: string | null
+  reviewerName: string | null
+  reviewedAt: string | null
   attachments: QuestionAttachment[]
   options: ExamQuestionOption[]
 }
@@ -336,6 +348,10 @@ export async function closeExam(id: number): Promise<Exam> {
   return response.data.data
 }
 
+export async function deleteExam(id: number): Promise<void> {
+  await apiClient.delete<ApiResponse<void>>(`/api/admin/exams/${id}`)
+}
+
 export async function fetchAdminResults(params?: { examId?: number }): Promise<ExamResult[]> {
   const response = await apiClient.get<ApiResponse<ExamResult[]>>('/api/admin/results', { params })
   return response.data.data
@@ -356,13 +372,23 @@ export async function startExam(examId: number): Promise<ExamSession> {
   return response.data.data
 }
 
-export async function saveExamAnswer(examId: number, answer: { questionId: number; selectedLabels: string[] }): Promise<ExamSession> {
-  const response = await apiClient.post<ApiResponse<ExamSession>>(`/api/exam/${examId}/answers`, answer)
+export async function saveExamAnswers(examId: number, answers: Array<{ questionId: number; selectedLabels?: string[]; answerText?: string }>): Promise<ExamSession> {
+  const response = await apiClient.post<ApiResponse<ExamSession>>(`/api/exam/${examId}/answers`, { answers })
   return response.data.data
 }
 
-export async function submitExam(examId: number, answers: Array<{ questionId: number; selectedLabels: string[] }>): Promise<ExamResult> {
+export async function submitExam(examId: number, answers: Array<{ questionId: number; selectedLabels?: string[]; answerText?: string }>): Promise<ExamResult> {
   const response = await apiClient.post<ApiResponse<ExamResult>>(`/api/exam/${examId}/submit`, { answers })
+  return response.data.data
+}
+
+export async function reviewWritingQuestion(resultId: number, questionId: number, payload: { score: number; comment: string }): Promise<ExamResultDetail> {
+  const response = await apiClient.post<ApiResponse<ExamResultDetail>>(`/api/admin/results/${resultId}/questions/${questionId}/review`, payload)
+  return response.data.data
+}
+
+export async function completeResultReview(resultId: number): Promise<ExamResultDetail> {
+  const response = await apiClient.post<ApiResponse<ExamResultDetail>>(`/api/admin/results/${resultId}/complete-review`)
   return response.data.data
 }
 

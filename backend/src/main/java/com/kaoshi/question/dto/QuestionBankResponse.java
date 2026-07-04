@@ -9,7 +9,8 @@ public record QuestionBankResponse(
         String status,
         Integer questionCount,
         Integer singleChoiceCount,
-        Integer multipleChoiceCount
+        Integer multipleChoiceCount,
+        Integer writingCount
 ) {
 }
 

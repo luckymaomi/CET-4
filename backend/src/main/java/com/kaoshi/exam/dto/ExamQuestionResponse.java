@@ -12,6 +12,7 @@ public record ExamQuestionResponse(
         BigDecimal score,
         Integer sortOrder,
         List<String> selectedLabels,
+        String answerText,
         List<QuestionAttachmentResponse> attachments,
         List<ExamQuestionOptionResponse> options
 ) {

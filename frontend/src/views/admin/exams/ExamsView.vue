@@ -61,13 +61,14 @@
           <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column fixed="right" label="操作" width="310">
+      <el-table-column fixed="right" label="操作" width="350">
         <template #default="{ row }: { row: Exam }">
           <el-button link type="primary" @click="openEditEditor(row)">编辑</el-button>
           <el-button link type="primary" @click="openResults(row)">成绩</el-button>
           <el-button link type="primary" @click="copyCurrentExam(row)">复制</el-button>
           <el-button link type="primary" @click="downloadCurrentExam(row)">下载</el-button>
           <el-button v-if="row.status === 'PUBLISHED'" link type="warning" @click="revokeCurrentExam(row)">撤销发布</el-button>
+          <el-button link type="danger" @click="deleteCurrentExam(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -122,6 +123,12 @@
                 </el-form-item>
                 <el-form-item label="多选分数">
                   <el-input-number v-model="rule.multipleScore" :min="0" :step="0.5" :controls="false" @change="markPaperStale" />
+                </el-form-item>
+                <el-form-item :label="`写作题（可用 ${bankStats(rule.bankId).writing}）`">
+                  <el-input-number v-model="rule.writingCount" :min="0" :max="bankStats(rule.bankId).writing" :controls="false" @change="markPaperStale" />
+                </el-form-item>
+                <el-form-item label="写作分数">
+                  <el-input-number v-model="rule.writingScore" :min="0" :step="0.5" :controls="false" @change="markPaperStale" />
                 </el-form-item>
               </div>
               <div class="rule-item__footer">
@@ -331,6 +338,13 @@
           <el-table-column label="成绩" width="120">
             <template #default="{ row }: { row: ExamResult }">{{ row.obtainedScore }} / {{ row.totalScore }}</template>
           </el-table-column>
+          <el-table-column label="阅卷状态" width="110">
+            <template #default="{ row }: { row: ExamResult }">
+              <el-tag :type="row.gradingStatus === 'FINAL' ? 'success' : 'warning'" effect="plain">
+                {{ row.gradingStatus === 'FINAL' ? '已出分' : '待阅卷' }}
+              </el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="考试结果" width="110">
             <template #default="{ row }: { row: ExamResult }">
               <el-tag :type="row.passed ? 'success' : 'danger'" effect="plain">{{ row.passed ? '通过' : '未通过' }}</el-tag>
@@ -363,6 +377,7 @@ import {
   closeExam,
   copyExam,
   createExam,
+  deleteExam,
   downloadExamPaper,
   fetchAdminExamDetail,
   fetchAdminExams,
@@ -381,6 +396,7 @@ import {
 } from '@/api/exam-business'
 import { downloadBlob } from '@/utils/download'
 import { formatDateTime } from '@/utils/datetime'
+import { questionTypeMeta, questionTypeText } from '@/utils/question-types'
 
 interface ExamRuleForm {
   rowId: number
@@ -389,6 +405,8 @@ interface ExamRuleForm {
   singleScore: number
   multipleCount: number
   multipleScore: number
+  writingCount: number
+  writingScore: number
 }
 
 interface ExamPaperQuestionForm {
@@ -477,7 +495,7 @@ const totalQuestionCount = computed(() => {
   if (paperQuestions.value.length > 0) {
     return paperQuestions.value.length
   }
-  return ruleset.value.reduce((sum, rule) => sum + rule.singleCount + rule.multipleCount, 0)
+  return ruleset.value.reduce((sum, rule) => sum + rule.singleCount + rule.multipleCount + rule.writingCount, 0)
 })
 const passedResultCount = computed(() => examResults.value.filter((result) => result.passed).length)
 const averageResultScore = computed(() => {
@@ -552,6 +570,8 @@ async function fillEditor(exam: Exam) {
     singleScore: rule.singleScore,
     multipleCount: rule.multipleCount,
     multipleScore: rule.multipleScore,
+    writingCount: rule.writingCount,
+    writingScore: rule.writingScore,
   }))
   for (const rule of ruleset.value) {
     await loadBankQuestions(rule.bankId)
@@ -594,6 +614,8 @@ function addRule() {
     singleScore: 5,
     multipleCount: 0,
     multipleScore: 5,
+    writingCount: 0,
+    writingScore: 15,
   })
   markPaperStale()
 }
@@ -608,8 +630,8 @@ function availableBanks(rule: ExamRuleForm) {
   return banks.value.filter((bank) => !selected.has(bank.id))
 }
 
-async function loadBankQuestions(bankId: number | null) {
-  if (!bankId || bankQuestions.value[bankId]) {
+async function loadBankQuestions(bankId: number | null, force = false) {
+  if (!bankId || (!force && bankQuestions.value[bankId])) {
     return
   }
   const result = await fetchQuestions({ page: 1, size: 500, bankId })
@@ -634,16 +656,17 @@ function bankStats(bankId: number | null) {
   return {
     single: questions.filter((question) => question.type === 'SINGLE_CHOICE').length,
     multiple: questions.filter((question) => question.type === 'MULTIPLE_CHOICE').length,
+    writing: questions.filter((question) => question.type === 'WRITING').length,
   }
 }
 
 function ruleScore(rule: ExamRuleForm) {
-  return rule.singleCount * rule.singleScore + rule.multipleCount * rule.multipleScore
+  return rule.singleCount * rule.singleScore + rule.multipleCount * rule.multipleScore + rule.writingCount * rule.writingScore
 }
 
 async function generatePaperQuestions() {
   for (const rule of ruleset.value) {
-    await loadBankQuestions(rule.bankId)
+    await loadBankQuestions(rule.bankId, true)
   }
   const generated: ExamPaperQuestionForm[] = []
   let sortOrder = 10
@@ -657,12 +680,20 @@ async function generatePaperQuestions() {
       .filter((question) => question.type === 'MULTIPLE_CHOICE')
       .sort((left, right) => left.id - right.id)
       .slice(0, rule.multipleCount)
+    const writings = questions
+      .filter((question) => question.type === 'WRITING')
+      .sort((left, right) => left.id - right.id)
+      .slice(0, rule.writingCount)
     for (const question of singles) {
       generated.push(toGeneratedPaperQuestion(question, rule.singleScore, sortOrder))
       sortOrder += 10
     }
     for (const question of multiples) {
       generated.push(toGeneratedPaperQuestion(question, rule.multipleScore, sortOrder))
+      sortOrder += 10
+    }
+    for (const question of writings) {
+      generated.push(toGeneratedPaperQuestion(question, rule.writingScore, sortOrder))
       sortOrder += 10
     }
   }
@@ -708,12 +739,24 @@ function defaultManualScore(type: Question['type']) {
     if (!rule.bankId || rule.bankId !== picker.bankId) {
       return false
     }
-    return type === 'SINGLE_CHOICE' ? rule.singleScore > 0 : rule.multipleScore > 0
+    if (type === 'SINGLE_CHOICE') {
+      return rule.singleScore > 0
+    }
+    if (type === 'MULTIPLE_CHOICE') {
+      return rule.multipleScore > 0
+    }
+    return rule.writingScore > 0
   })
   if (!matchedRule) {
-    return 5
+    return questionTypeMeta(type).manualReview ? 15 : 5
   }
-  return type === 'SINGLE_CHOICE' ? matchedRule.singleScore : matchedRule.multipleScore
+  if (type === 'SINGLE_CHOICE') {
+    return matchedRule.singleScore
+  }
+  if (type === 'MULTIPLE_CHOICE') {
+    return matchedRule.multipleScore
+  }
+  return matchedRule.writingScore
 }
 
 function toGeneratedPaperQuestion(question: Question, score: number, sortOrder: number): ExamPaperQuestionForm {
@@ -840,6 +883,21 @@ async function revokeCurrentExam(exam: Exam) {
   await loadExams()
 }
 
+async function deleteCurrentExam(exam: Exam) {
+  await ElMessageBox.confirm(`确认删除考试“${exam.title}”？没有作答或成绩的考试会连同草稿和发布快照一起删除。`, '删除考试', {
+    type: 'warning',
+    confirmButtonText: '删除考试',
+    cancelButtonText: '取消',
+  })
+  await deleteExam(exam.id)
+  ElMessage.success('考试已删除')
+  if (editingExam.value?.id === exam.id) {
+    editorVisible.value = false
+    editingExam.value = null
+  }
+  await loadExams()
+}
+
 async function openResults(exam: Exam) {
   selectedResultExam.value = exam
   resultsVisible.value = true
@@ -863,6 +921,8 @@ async function buildPayload(): Promise<ExamPayload | null> {
       singleScore: rule.singleCount === 0 ? 0 : rule.singleScore,
       multipleCount: rule.multipleCount,
       multipleScore: rule.multipleCount === 0 ? 0 : rule.multipleScore,
+      writingCount: rule.writingCount,
+      writingScore: rule.writingCount === 0 ? 0 : rule.writingScore,
     }))
   if (paperQuestions.value.length === 0 && payloadRules.length > 0) {
     await generatePaperQuestions()
@@ -929,9 +989,6 @@ function questionOrderText(mode: Exam['questionOrderMode']) {
   return mode === 'RANDOM' ? '随机顺序' : '固定顺序'
 }
 
-function questionTypeText(type: Question['type']) {
-  return type === 'MULTIPLE_CHOICE' ? '多选题' : '单选题'
-}
 </script>
 
 <style scoped>

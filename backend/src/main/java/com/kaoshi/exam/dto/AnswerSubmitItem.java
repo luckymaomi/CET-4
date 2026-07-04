@@ -6,7 +6,8 @@ import java.util.List;
 
 public record AnswerSubmitItem(
         @NotNull Long questionId,
-        @NotNull List<String> selectedLabels
+        List<String> selectedLabels,
+        String answerText
 ) {
 }
 

@@ -15,10 +15,14 @@ public record ExamResultDetailResponse(
         String departmentName,
         BigDecimal totalScore,
         BigDecimal obtainedScore,
+        BigDecimal objectiveScore,
+        BigDecimal subjectiveScore,
         Integer correctCount,
         Integer questionCount,
+        String gradingStatus,
         Boolean passed,
         LocalDateTime submittedAt,
+        LocalDateTime reviewedAt,
         List<ExamResultQuestionResponse> questions
 ) {
 }

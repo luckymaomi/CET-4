@@ -11,6 +11,8 @@ public record ExamRuleRequest(
         @NotNull @Min(0) Integer singleCount,
         @NotNull @DecimalMin("0.00") BigDecimal singleScore,
         @NotNull @Min(0) Integer multipleCount,
-        @NotNull @DecimalMin("0.00") BigDecimal multipleScore
+        @NotNull @DecimalMin("0.00") BigDecimal multipleScore,
+        @Min(0) Integer writingCount,
+        @DecimalMin("0.00") BigDecimal writingScore
 ) {
 }

@@ -10,6 +10,8 @@ public record ExamRuleResponse(
         BigDecimal singleScore,
         Integer multipleCount,
         BigDecimal multipleScore,
+        Integer writingCount,
+        BigDecimal writingScore,
         Integer sortOrder
 ) {
 }

@@ -8,6 +8,7 @@ import com.kaoshi.exam.dto.ExamSaveRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -74,6 +75,12 @@ public class AdminExamController {
     @PostMapping("/{id}/close")
     public ApiResponse<ExamResponse> close(@PathVariable Long id) {
         return ApiResponse.ok(examService.close(id));
+    }
+
+    @DeleteMapping("/{id}")
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        examService.delete(id);
+        return ApiResponse.ok(null);
     }
 }
 

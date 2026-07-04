@@ -14,8 +14,12 @@ public record ExamResultQuestionResponse(
         BigDecimal obtainedScore,
         Integer sortOrder,
         List<String> selectedLabels,
+        String answerText,
         List<String> correctLabels,
         Boolean correct,
+        String reviewComment,
+        String reviewerName,
+        java.time.LocalDateTime reviewedAt,
         List<QuestionAttachmentResponse> attachments,
         List<ExamQuestionOptionResponse> options
 ) {

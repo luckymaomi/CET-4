@@ -14,8 +14,11 @@ public record ExamResultResponse(
         String departmentName,
         BigDecimal totalScore,
         BigDecimal obtainedScore,
+        BigDecimal objectiveScore,
+        BigDecimal subjectiveScore,
         Integer correctCount,
         Integer questionCount,
+        String gradingStatus,
         Boolean passed,
         LocalDateTime submittedAt
 ) {

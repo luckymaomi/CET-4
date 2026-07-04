@@ -1,7 +1,14 @@
 import { expect, type Locator, type Page } from '@playwright/test'
 
 export async function login(page: Page) {
-  await page.goto('/login')
+  await page.goto('/login', { waitUntil: 'domcontentloaded' })
+  if (await page.getByRole('menuitem', { name: '角色管理' }).isVisible({ timeout: 1000 }).catch(() => false)) {
+    await expect
+      .poll(() => page.evaluate(() => window.localStorage.getItem('kaoshi.accessToken')))
+      .toBeTruthy()
+    return
+  }
+  await expect(page.getByLabel('账号')).toBeVisible()
   await page.getByLabel('账号').fill('admin')
   await page.getByLabel('密码').fill('password')
   const loginResponse = page.waitForResponse((response) => {
