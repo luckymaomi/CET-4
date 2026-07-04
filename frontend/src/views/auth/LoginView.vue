@@ -2,13 +2,15 @@
   <main class="login-page">
     <section class="login-panel">
       <div class="login-copy">
-        <span class="eyebrow">考试</span>
         <h1>CET-4 四级考试平台</h1>
-        <p>统一管理身份、权限、题库、试卷、考试、作答、评分和成绩归档。</p>
+        <p>以大学英语四级真题作为演示样例，展示题库维护、考试发布、在线作答、阅卷评分和成绩复盘流程。</p>
       </div>
 
       <el-form ref="formRef" class="login-form" :model="form" :rules="rules" label-position="top" @submit.prevent>
-        <h2>登录</h2>
+        <div class="login-form__head">
+          <h2>登录</h2>
+          <p>进入演示工作台，体验完整考试流程。</p>
+        </div>
         <el-form-item label="账号" prop="username">
           <el-input v-model.trim="form.username" autocomplete="username" size="large" />
         </el-form-item>
@@ -25,7 +27,6 @@
         <el-button class="submit" :loading="auth.loading" size="large" type="primary" @click="submit">
           进入平台
         </el-button>
-        <p class="seed">本地种子账号：admin / password</p>
       </el-form>
     </section>
   </main>

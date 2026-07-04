@@ -380,7 +380,7 @@ function preventUnload(event: BeforeUnloadEvent) {
 
 .exam-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, clamp(220px, 20vw, 300px));
   gap: 16px;
   align-items: start;
 }

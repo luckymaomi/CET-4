@@ -18,7 +18,7 @@
           type="button"
           @click="$emit('select-question', question.questionId)"
         >
-          {{ question.itemLabel || questionIndex(question.questionId) + 1 }}
+          {{ questionIndex(question.questionId) + 1 }}
         </button>
       </div>
     </div>
@@ -58,7 +58,8 @@ function questionIndex(questionId: number) {
   display: grid;
   gap: 14px;
   min-width: 0;
-  padding: 16px;
+  width: 100%;
+  padding: clamp(14px, 1.4vw, 18px);
   border: 1px solid var(--ks-border);
   border-radius: var(--ks-radius);
   background: var(--ks-panel);
@@ -69,9 +70,16 @@ function questionIndex(questionId: number) {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+}
+
+.answer-card__header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .answer-card__header span {
+  flex: none;
   color: var(--ks-text-muted);
   font-size: 13px;
 }
@@ -86,23 +94,31 @@ function questionIndex(questionId: number) {
   color: var(--ks-text-muted);
   font-size: 13px;
   font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .answer-card__grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(clamp(30px, 3.3vw, 38px), 1fr));
+  gap: clamp(6px, 0.8vw, 8px);
+  min-width: 0;
 }
 
 .answer-card__item {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 1;
+  height: auto;
+  min-height: 30px;
+  max-height: 40px;
   place-items: center;
   border: 1px solid var(--ks-border);
   border-radius: 6px;
   background: var(--ks-panel-muted);
   color: var(--ks-text-muted);
+  font-size: clamp(12px, 1.1vw, 14px);
   cursor: pointer;
 }
 

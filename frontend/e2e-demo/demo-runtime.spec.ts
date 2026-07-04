@@ -29,6 +29,7 @@ test('GitHub Pages demo 使用同源 UI 和内存数据完成核心体验', asyn
   await expect(page.getByRole('button', { name: '开始考试' })).toBeVisible()
   await page.getByRole('button', { name: '开始考试' }).click()
   await expect(page.getByRole('button', { name: '提交试卷' }).first()).toBeVisible()
+  await expect(page.locator('.question-group-context__media audio').first()).toHaveAttribute('src', /\/CET-4\/local-assets\/cet4\/2023-03\/set-1\/2023-03-cet4-listening\.mp3/)
   await page.locator('.question-panel textarea').first().fill('This is a demo answer for the CET4 writing task.')
   await page.locator('.answer-options .el-radio').first().click()
   await page.getByRole('button', { name: '提交试卷' }).first().click()

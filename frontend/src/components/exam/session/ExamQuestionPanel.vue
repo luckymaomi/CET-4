@@ -12,12 +12,12 @@
       <template v-for="attachment in question.attachments" :key="attachment.id">
         <img
           v-if="attachment.mediaType === 'IMAGE'"
-          :src="attachment.fileUrl"
+          :src="resolveResourceUrl(attachment.fileUrl)"
           :alt="attachment.fileName"
           class="question-media__image"
         />
-        <audio v-else-if="attachment.mediaType === 'AUDIO'" :src="attachment.fileUrl" controls class="question-media__audio" />
-        <el-link v-else :href="attachment.fileUrl" target="_blank">{{ attachment.fileName }}</el-link>
+        <audio v-else-if="attachment.mediaType === 'AUDIO'" :src="resolveResourceUrl(attachment.fileUrl)" controls class="question-media__audio" />
+        <el-link v-else :href="resolveResourceUrl(attachment.fileUrl)" target="_blank">{{ attachment.fileName }}</el-link>
       </template>
     </div>
 
@@ -79,6 +79,7 @@ import { computed } from 'vue'
 import type { ExamQuestion } from '@/api/exam-business'
 import type { MultipleAnswerMap, SingleAnswerMap, TextAnswerMap } from '@/utils/exam-session'
 import { isManualReviewType, isMultipleAnswerType, questionTypeMeta, questionTypeText } from '@/utils/question-types'
+import { resolveResourceUrl } from '@/utils/resource-url'
 
 const props = withDefaults(defineProps<{
   question: ExamQuestion

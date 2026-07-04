@@ -14,9 +14,9 @@
     </div>
     <div v-if="attachments.length" class="question-group-context__media">
       <template v-for="attachment in attachments" :key="attachment.id">
-        <img v-if="attachment.mediaType === 'IMAGE'" :src="attachment.fileUrl" :alt="attachment.fileName" />
-        <audio v-else-if="attachment.mediaType === 'AUDIO'" :src="attachment.fileUrl" controls />
-        <el-link v-else :href="attachment.fileUrl" target="_blank">{{ attachment.fileName }}</el-link>
+        <img v-if="attachment.mediaType === 'IMAGE'" :src="resolveResourceUrl(attachment.fileUrl)" :alt="attachment.fileName" />
+        <audio v-else-if="attachment.mediaType === 'AUDIO'" :src="resolveResourceUrl(attachment.fileUrl)" controls />
+        <el-link v-else :href="resolveResourceUrl(attachment.fileUrl)" target="_blank">{{ attachment.fileName }}</el-link>
       </template>
     </div>
   </section>
@@ -24,6 +24,7 @@
 
 <script setup lang="ts">
 import type { ExamQuestionOption, QuestionAttachment } from '@/api/exam-business'
+import { resolveResourceUrl } from '@/utils/resource-url'
 
 withDefaults(defineProps<{
   sectionTitle: string
