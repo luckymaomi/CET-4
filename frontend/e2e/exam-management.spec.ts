@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test'
 
 import { collectConsoleIssues, login, setNumberInput } from './helpers'
 
-const CET4_EXAM = '2023年03月英语四级真题第一套'
-const CET4_BANK = '2023年03月英语四级第一套 - 听力'
+const CET4_EXAM = 'CET-4 四级考试平台演示'
+const CET4_BANK = '四级样例题库'
 
 test.describe('考试管理', () => {
   test('考试管理支持搜索、新建、保存草稿、发布和详情读回', async ({ page }) => {
@@ -28,7 +28,7 @@ test.describe('考试管理', () => {
     await examDialog.locator('.rule-item .el-select').first().click()
     await page.getByRole('option', { name: CET4_BANK }).click()
     await expect(examDialog.getByText(/单选题（可用 [1-9]/)).toBeVisible()
-    await expect(examDialog.getByText(/写作题（可用 0/)).toBeVisible()
+    await expect(examDialog.getByText(/写作题（可用 [1-9]/)).toBeVisible()
     const ruleNumbers = examDialog.locator('.rule-fields .el-input-number input')
     await setNumberInput(ruleNumbers.nth(0), '1')
     await setNumberInput(ruleNumbers.nth(1), '5')
@@ -45,13 +45,13 @@ test.describe('考试管理', () => {
     await examDialog.getByText('随机顺序').click()
     await examDialog.getByLabel('开放范围').getByText('公开考试').click()
     await examDialog.getByRole('button', { name: '按规则生成' }).click()
-    await expect(examDialog.locator('.paper-table')).toContainText('2023年03月英语四级真题第一套')
+    await expect(examDialog.locator('.paper-table')).toContainText('essential')
     await expect(examDialog.getByRole('button', { name: '更新试卷' })).toBeEnabled()
     await examDialog.locator('.manual-picker').getByRole('button', { name: '加载试题' }).click()
-    await examDialog.locator('.picker-table').getByRole('button', { name: '加入试卷' }).first().click()
+    await examDialog.locator('.picker-table').getByRole('button', { name: '加入试卷' }).nth(1).click()
     await expect(examDialog.locator('.paper-table tbody tr')).toHaveCount(2)
     await examDialog.locator('.paper-table').getByRole('button', { name: '下移' }).first().click()
-    await expect(examDialog.locator('.paper-table tbody tr').first()).not.toContainText('Part II Listening Comprehension')
+    await expect(examDialog.locator('.paper-table tbody tr').first()).not.toContainText('essential')
     await examDialog.getByRole('button', { name: '预览试卷' }).click()
     await expect(page.getByRole('dialog', { name: '试卷预览' })).toBeVisible()
     await page.keyboard.press('Escape')
@@ -139,6 +139,7 @@ test.describe('考试管理', () => {
         durationMinutes: 20,
         timeLimit: false,
         attemptLimit: null,
+        examMode: 'STRUCTURED',
         displayMode: 'ALL',
         questionOrderMode: 'FIXED',
         openType: 'PUBLIC',
@@ -154,6 +155,9 @@ test.describe('考试管理', () => {
             writingScore: 0,
           },
         ],
+        paperQuestions: [],
+        materials: [],
+        answerCardItems: [],
       },
     })
     expect(examResponse.ok()).toBeTruthy()

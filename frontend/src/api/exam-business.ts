@@ -11,12 +11,8 @@ import type {
   Question,
   QuestionAttachmentPayload,
   QuestionBank,
-  QuestionBankPackageImportResult,
   QuestionBankPayload,
   QuestionCategoryPayload,
-  QuestionContentNode,
-  QuestionContentTree,
-  QuestionNodePayload,
   QuestionPayload,
 } from './exam-business-types'
 
@@ -24,6 +20,10 @@ export type {
   Exam,
   ExamPaperQuestion,
   ExamPaperQuestionPayload,
+  ExamMaterial,
+  ExamMaterialPayload,
+  ExamAnswerCardItem,
+  ExamAnswerCardItemPayload,
   ExamPayload,
   ExamQuestion,
   ExamQuestionOption,
@@ -38,14 +38,8 @@ export type {
   QuestionAttachment,
   QuestionAttachmentPayload,
   QuestionBank,
-  QuestionBankPackageImportResult,
   QuestionBankPayload,
   QuestionCategoryPayload,
-  QuestionContentNode,
-  QuestionContentTree,
-  QuestionNodeOption,
-  QuestionNodeOptionPayload,
-  QuestionNodePayload,
   QuestionOption,
   QuestionOptionPayload,
   QuestionPayload,
@@ -77,34 +71,6 @@ export function createQuestionBank(payload: QuestionBankPayload): Promise<Questi
 
 export function updateQuestionBank(id: number, payload: QuestionBankPayload): Promise<QuestionBank> {
   return examBusinessAdapter.updateQuestionBank(id, payload)
-}
-
-export function fetchQuestionContentTree(bankId: number): Promise<QuestionContentTree> {
-  return examBusinessAdapter.fetchQuestionContentTree(bankId)
-}
-
-export function createQuestionNode(bankId: number, payload: QuestionNodePayload): Promise<QuestionContentNode> {
-  return examBusinessAdapter.createQuestionNode(bankId, payload)
-}
-
-export function updateQuestionNode(nodeId: number, payload: QuestionNodePayload): Promise<QuestionContentNode> {
-  return examBusinessAdapter.updateQuestionNode(nodeId, payload)
-}
-
-export function deleteQuestionNode(nodeId: number): Promise<void> {
-  return examBusinessAdapter.deleteQuestionNode(nodeId)
-}
-
-export function importQuestionsToGroup(nodeId: number, file: File): Promise<ExcelImportResult> {
-  return examBusinessAdapter.importQuestionsToGroup(nodeId, file)
-}
-
-export function downloadQuestionBankPackage(bankId: number): Promise<Blob> {
-  return examBusinessAdapter.downloadQuestionBankPackage(bankId)
-}
-
-export function importQuestionBankPackage(file: File): Promise<QuestionBankPackageImportResult> {
-  return examBusinessAdapter.importQuestionBankPackage(file)
 }
 
 export function fetchQuestions(params: { page: number; size: number; keyword?: string; bankId?: number }): Promise<PageResult<Question>> {

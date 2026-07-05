@@ -121,13 +121,10 @@ final class ExamAttemptWorkflow {
         for (Map<String, Object> source : questions) {
             Map<String, Object> question = new HashMap<>();
             question.put("attemptId", attemptId);
-            question.put("attemptNodeId", copyAttemptNodeFromPublished(attemptId, nullableLong(value(source, "publishedNodeId"))));
             question.put("publishedQuestionId", longValue(value(source, "id")));
             question.put("sourceQuestionId", longValue(value(source, "sourceQuestionId")));
             question.put("type", stringValue(value(source, "type")));
             question.put("stem", stringValue(value(source, "stem")));
-            question.put("itemLabel", stringValue(value(source, "itemLabel")));
-            question.put("itemStem", stringValue(value(source, "itemStem")));
             question.put("analysis", stringValue(value(source, "analysis")));
             question.put("score", decimalValue(value(source, "score")));
             question.put("sortOrder", intValue(value(source, "sortOrder")));
@@ -140,34 +137,6 @@ final class ExamAttemptWorkflow {
             examMapper.copyAttemptAttachments(attemptQuestionId, publishedQuestionId);
             displayOrder += 10;
         }
-    }
-
-    private Long copyAttemptNodeFromPublished(Long attemptId, Long publishedNodeId) {
-        if (publishedNodeId == null) {
-            return null;
-        }
-        Map<String, Object> published = examMapper.findPublishedNode(publishedNodeId);
-        Long sourceNodeId = longValue(value(published, "sourceNodeId"));
-        Map<String, Object> existing = examMapper.findAttemptNodeBySource(attemptId, sourceNodeId);
-        if (existing != null) {
-            return longValue(value(existing, "id"));
-        }
-        Long parentId = copyAttemptNodeFromPublished(attemptId, nullableLong(value(published, "parentId")));
-        Map<String, Object> node = new HashMap<>();
-        node.put("attemptId", attemptId);
-        node.put("sourceNodeId", sourceNodeId);
-        node.put("parentId", parentId);
-        node.put("nodeCode", stringValue(value(published, "nodeCode")));
-        node.put("nodeType", stringValue(value(published, "nodeType")));
-        node.put("title", stringValue(value(published, "title")));
-        node.put("direction", stringValue(value(published, "direction")));
-        node.put("material", stringValue(value(published, "material")));
-        node.put("sortOrder", intValue(value(published, "sortOrder")));
-        examMapper.insertAttemptNode(node);
-        Long attemptNodeId = longValue(value(node, "id"));
-        examMapper.copyAttemptNodeOptions(attemptNodeId, publishedNodeId);
-        examMapper.copyAttemptNodeAttachments(attemptNodeId, publishedNodeId);
-        return attemptNodeId;
     }
 
     private void saveAnswerForAttemptQuestion(Long attemptId, Map<String, Object> attemptQuestion, List<String> selectedLabels, String answerText, boolean correct, BigDecimal score) {
@@ -188,9 +157,5 @@ final class ExamAttemptWorkflow {
                 correct,
                 score
         );
-    }
-
-    private Long nullableLong(Object value) {
-        return value == null ? null : longValue(value);
     }
 }

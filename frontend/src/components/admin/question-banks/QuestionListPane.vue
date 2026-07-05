@@ -10,7 +10,6 @@
       </div>
       <div class="header-actions">
         <el-button v-if="selectedBank" @click="$emit('edit-bank', selectedBank)">编辑题库</el-button>
-        <el-button v-if="selectedBank" @click="$emit('manage-structure')">题组结构</el-button>
         <el-button v-if="selectedCategory && !selectedBank" @click="$emit('edit-category', selectedCategory.id)">编辑分类</el-button>
         <el-button type="primary" :disabled="bankCount === 0" @click="$emit('create-question')">新建试题</el-button>
       </div>
@@ -88,7 +87,6 @@ defineEmits<{
   'edit-category': [categoryId: number]
   'create-question': []
   'edit-question': [question: Question]
-  'manage-structure': []
 }>()
 </script>
 

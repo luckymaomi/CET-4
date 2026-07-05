@@ -28,8 +28,8 @@ interface ExamCoreMapper {
     Exam findExamById(@Param("id") Long id);
 
     @Insert("""
-            insert into exams (title, description, qualify_score, start_time, end_time, duration_minutes, time_limit, attempt_limit, display_mode, question_order_mode, open_type, status)
-            values (#{title}, #{description}, #{qualifyScore}, #{startTime}, #{endTime}, #{durationMinutes}, #{timeLimit}, #{attemptLimit}, #{displayMode}, #{questionOrderMode}, #{openType}, #{status})
+            insert into exams (title, description, qualify_score, start_time, end_time, duration_minutes, time_limit, attempt_limit, exam_mode, display_mode, question_order_mode, open_type, status)
+            values (#{title}, #{description}, #{qualifyScore}, #{startTime}, #{endTime}, #{durationMinutes}, #{timeLimit}, #{attemptLimit}, #{examMode}, #{displayMode}, #{questionOrderMode}, #{openType}, #{status})
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
     void insertExam(Exam exam);
@@ -44,6 +44,7 @@ interface ExamCoreMapper {
                 duration_minutes = #{durationMinutes},
                 time_limit = #{timeLimit},
                 attempt_limit = #{attemptLimit},
+                exam_mode = #{examMode},
                 display_mode = #{displayMode},
                 question_order_mode = #{questionOrderMode},
                 open_type = #{openType},
@@ -97,6 +98,30 @@ interface ExamCoreMapper {
 
     @Select("select * from exam_rules where exam_id = #{examId} order by sort_order, id")
     List<Map<String, Object>> findExamRules(@Param("examId") Long examId);
+
+    @Delete("delete from exam_materials where exam_id = #{examId}")
+    void deleteExamMaterials(@Param("examId") Long examId);
+
+    @Insert("""
+            insert into exam_materials (exam_id, title, description, file_name, file_url, media_type, sort_order)
+            values (#{examId}, #{title}, #{description}, #{fileName}, #{fileUrl}, #{mediaType}, #{sortOrder})
+            """)
+    void insertExamMaterial(Map<String, Object> material);
+
+    @Select("select * from exam_materials where exam_id = #{examId} order by sort_order, id")
+    List<Map<String, Object>> findExamMaterials(@Param("examId") Long examId);
+
+    @Delete("delete from exam_answer_card_items where exam_id = #{examId}")
+    void deleteExamAnswerCardItems(@Param("examId") Long examId);
+
+    @Insert("""
+            insert into exam_answer_card_items (exam_id, question_no, answer_type, option_labels, correct_labels, score, sort_order)
+            values (#{examId}, #{questionNo}, #{answerType}, #{optionLabels}, #{correctLabels}, #{score}, #{sortOrder})
+            """)
+    void insertExamAnswerCardItem(Map<String, Object> item);
+
+    @Select("select * from exam_answer_card_items where exam_id = #{examId} order by sort_order, id")
+    List<Map<String, Object>> findExamAnswerCardItems(@Param("examId") Long examId);
 
     @Select("""
             select count(*)

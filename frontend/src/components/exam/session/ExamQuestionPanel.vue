@@ -2,10 +2,6 @@
   <article :id="panelId" class="question-panel">
     <div class="question-title">
       <strong>{{ questionTitle }}</strong>
-      <div class="question-title__meta">
-        <el-tag effect="plain">{{ questionTypeText(question.type) }}</el-tag>
-        <el-tag>{{ question.score }} 分</el-tag>
-      </div>
     </div>
 
     <div v-if="showAttachments && question.attachments.length" class="question-media">
@@ -32,17 +28,6 @@
         {{ option.label }}. {{ option.content }}
       </el-checkbox>
     </el-checkbox-group>
-    <el-select
-      v-else-if="isCompactSharedOptionQuestion"
-      v-model="singleAnswers[question.questionId]"
-      class="answer-select"
-      :disabled="disabled"
-      filterable
-      placeholder="选择答案"
-      @change="$emit('schedule-save', question)"
-    >
-      <el-option v-for="option in question.options" :key="option.id" :label="`${option.label}. ${option.content}`" :value="option.label" />
-    </el-select>
     <el-radio-group
       v-else-if="isOptionBasedQuestion"
       v-model="singleAnswers[question.questionId]"
@@ -62,7 +47,7 @@
       maxlength="5000"
       show-word-limit
       resize="vertical"
-      :placeholder="`${questionTypeText(question.type)}答案`"
+      placeholder="请输入答案"
       :disabled="disabled"
       @input="$emit('schedule-save', question)"
       @blur="$emit('save-immediately', question)"
@@ -78,7 +63,7 @@ import { computed } from 'vue'
 
 import type { ExamQuestion } from '@/api/exam-business'
 import type { MultipleAnswerMap, SingleAnswerMap, TextAnswerMap } from '@/utils/exam-session'
-import { isManualReviewType, isMultipleAnswerType, questionTypeMeta, questionTypeText } from '@/utils/question-types'
+import { isManualReviewType, isMultipleAnswerType, questionTypeMeta } from '@/utils/question-types'
 import { resolveResourceUrl } from '@/utils/resource-url'
 
 const props = withDefaults(defineProps<{
@@ -90,12 +75,10 @@ const props = withDefaults(defineProps<{
   disabled?: boolean
   panelId?: string
   showAttachments?: boolean
-  compactSharedOptions?: boolean
 }>(), {
   disabled: false,
   panelId: undefined,
   showAttachments: true,
-  compactSharedOptions: false,
 })
 
 defineEmits<{
@@ -104,24 +87,15 @@ defineEmits<{
 }>()
 
 const questionTitle = computed(() => {
-  const label = props.question.itemLabel || String(props.index + 1)
-  const stem = props.question.itemStem || props.question.stem
+  const label = String(props.index + 1)
+  const stem = props.question.stem
   return stem ? `${label}. ${stem}` : label
 })
 
 const isOptionBasedQuestion = computed(() => questionTypeMeta(props.question.type).optionBased)
-const isCompactSharedOptionQuestion = computed(() => props.compactSharedOptions && ['WORD_BANK', 'MATCHING'].includes(props.question.type))
 </script>
 
 <style scoped>
-.question-title__meta {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .question-media {
   display: grid;
   gap: 12px;

@@ -10,7 +10,7 @@
 
     <QuestionMedia :attachments="question.attachments" />
 
-    <div v-if="!compactSharedOptions" class="review-options">
+    <div class="review-options">
       <div
         v-for="option in question.options"
         :key="option.id"
@@ -46,12 +46,11 @@ import QuestionMedia from './QuestionMedia.vue'
 const props = defineProps<{
   question: ExamResultQuestion
   index: number
-  compactSharedOptions?: boolean
 }>()
 
 const questionTitle = computed(() => {
-  const label = props.question.itemLabel || String(props.index + 1)
-  const stem = props.question.itemStem || props.question.stem
+  const label = String(props.index + 1)
+  const stem = props.question.stem
   return stem ? `${label}. ${stem}` : label
 })
 

@@ -12,17 +12,6 @@ import java.util.List;
 import java.util.Map;
 
 interface ExamResultMapper {
-    String ATTEMPT_NODE_FIELDS = """
-                   case when section_node.id is null then null else section_node.node_code end as sectionCode,
-                   case when section_node.id is null then null else section_node.title end as sectionTitle,
-                   case when section_node.id is null then 0 else section_node.sort_order end as sectionSortOrder,
-                   case when group_node.id is null then null else group_node.node_code end as groupCode,
-                   case when group_node.id is null then null else group_node.title end as groupTitle,
-                   case when group_node.id is null then null else group_node.direction end as groupDirection,
-                   case when group_node.id is null then null else group_node.material end as groupMaterial,
-                   case when group_node.id is null then 0 else group_node.sort_order end as groupSortOrder
-            """;
-
     @Insert("""
             insert into exam_results (attempt_id, exam_id, user_id, total_score, obtained_score, objective_score, subjective_score, correct_count, question_count, grading_status, submitted_at)
             values (#{attemptId}, #{examId}, #{userId}, #{totalScore}, #{obtainedScore}, #{objectiveScore}, #{subjectiveScore}, #{correctCount}, #{questionCount}, #{gradingStatus}, #{submittedAt})
@@ -79,10 +68,6 @@ interface ExamResultMapper {
                    aq.source_question_id as questionId,
                    aq.type as type,
                    aq.stem as stem,
-            """ + ATTEMPT_NODE_FIELDS + """
-                   ,
-                   aq.item_label as itemLabel,
-                   aq.item_stem as itemStem,
                    aq.analysis as analysis,
                    aq.score as score,
                    ea.score as obtainedScore,
@@ -95,8 +80,6 @@ interface ExamResultMapper {
                    reviewer.display_name as reviewerName
             from exam_attempt_questions aq
             join exam_answers ea on ea.attempt_question_id = aq.id
-            left join exam_attempt_nodes group_node on group_node.id = aq.attempt_node_id
-            left join exam_attempt_nodes section_node on section_node.id = group_node.parent_id
             left join users reviewer on reviewer.id = ea.reviewed_by
             where aq.attempt_id = #{attemptId}
             order by aq.display_order, aq.id
@@ -139,7 +122,7 @@ interface ExamResultMapper {
             join exam_results r on r.attempt_id = aq.attempt_id
             join exam_answers ea on ea.attempt_question_id = aq.id
             where r.id = #{resultId}
-              and aq.type in ('WRITING', 'TRANSLATION')
+              and aq.type = 'WRITING'
               and ea.reviewed_at is null
             """)
     int countPendingWritingReviews(@Param("resultId") Long resultId);
@@ -149,12 +132,12 @@ interface ExamResultMapper {
             from exam_attempt_questions aq
             join exam_results r on r.attempt_id = aq.attempt_id
             where r.id = #{resultId}
-              and aq.type in ('WRITING', 'TRANSLATION')
+              and aq.type = 'WRITING'
             """)
     int countWritingQuestionsByResult(@Param("resultId") Long resultId);
 
     @Select("""
-            select coalesce(sum(case when aq.type not in ('WRITING', 'TRANSLATION') then ea.score else 0 end), 0)
+            select coalesce(sum(case when aq.type <> 'WRITING' then ea.score else 0 end), 0)
             from exam_attempt_questions aq
             join exam_results r on r.attempt_id = aq.attempt_id
             join exam_answers ea on ea.attempt_question_id = aq.id
@@ -163,7 +146,7 @@ interface ExamResultMapper {
     BigDecimal sumObjectiveScore(@Param("resultId") Long resultId);
 
     @Select("""
-            select coalesce(sum(case when aq.type in ('WRITING', 'TRANSLATION') then ea.score else 0 end), 0)
+            select coalesce(sum(case when aq.type = 'WRITING' then ea.score else 0 end), 0)
             from exam_attempt_questions aq
             join exam_results r on r.attempt_id = aq.attempt_id
             join exam_answers ea on ea.attempt_question_id = aq.id
@@ -177,7 +160,7 @@ interface ExamResultMapper {
             join exam_results r on r.attempt_id = aq.attempt_id
             join exam_answers ea on ea.attempt_question_id = aq.id
             where r.id = #{resultId}
-              and aq.type not in ('WRITING', 'TRANSLATION')
+              and aq.type <> 'WRITING'
               and ea.is_correct = true
             """)
     int countCorrectObjectiveAnswers(@Param("resultId") Long resultId);

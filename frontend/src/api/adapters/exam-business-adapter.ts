@@ -10,12 +10,8 @@ import type {
   Question,
   QuestionAttachmentPayload,
   QuestionBank,
-  QuestionBankPackageImportResult,
   QuestionBankPayload,
   QuestionCategoryPayload,
-  QuestionContentNode,
-  QuestionContentTree,
-  QuestionNodePayload,
   QuestionPayload,
 } from '../exam-business-types'
 
@@ -27,13 +23,6 @@ export interface ExamBusinessAdapter {
   fetchQuestionBanks(params: { page: number; size: number; keyword?: string }): Promise<PageResult<QuestionBank>>
   createQuestionBank(payload: QuestionBankPayload): Promise<QuestionBank>
   updateQuestionBank(id: number, payload: QuestionBankPayload): Promise<QuestionBank>
-  fetchQuestionContentTree(bankId: number): Promise<QuestionContentTree>
-  createQuestionNode(bankId: number, payload: QuestionNodePayload): Promise<QuestionContentNode>
-  updateQuestionNode(nodeId: number, payload: QuestionNodePayload): Promise<QuestionContentNode>
-  deleteQuestionNode(nodeId: number): Promise<void>
-  importQuestionsToGroup(nodeId: number, file: File): Promise<ExcelImportResult>
-  downloadQuestionBankPackage(bankId: number): Promise<Blob>
-  importQuestionBankPackage(file: File): Promise<QuestionBankPackageImportResult>
   fetchQuestions(params: { page: number; size: number; keyword?: string; bankId?: number }): Promise<PageResult<Question>>
   fetchQuestionDetail(id: number): Promise<Question>
   createQuestion(payload: QuestionPayload): Promise<Question>

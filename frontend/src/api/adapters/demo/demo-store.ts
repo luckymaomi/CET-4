@@ -1,5 +1,3 @@
-import questionSet from '../../../../../backend/src/main/resources/question-sets/cet4/2023-03/set-1.json'
-
 import type {
   AdminMenu,
   AdminPermission,
@@ -15,115 +13,24 @@ import type {
   Question,
   QuestionAttachment,
   QuestionBank,
-  QuestionContentNode,
-  QuestionContentTree,
   QuestionOption,
 } from '../../exam-business-types'
 import type { CurrentUser } from '../../types'
-import { isManualReviewType, type QuestionTypeCode } from '@/utils/question-types'
+import { isManualReviewType } from '@/utils/question-types'
 
 interface DemoUser extends AdminUser {
   password: string
   roleIds: number[]
 }
 
-interface ResourceCategory {
-  code: string
-  name: string
-  description: string | null
-  sortOrder: number
-}
-
-interface ResourceBank {
-  code: string
-  categoryCode: string
-  name: string
-  description: string | null
-  status: QuestionBank['status']
-}
-
-interface ResourceAttachment {
-  fileName: string
-  fileUrl: string
-  mediaType: QuestionAttachment['mediaType']
-  sortOrder: number
-}
-
-interface ResourceOption {
-  label: string
-  content: string
-  correct: boolean
-  sortOrder: number
-}
-
-interface ResourceItem {
-  code: string
-  type: QuestionTypeCode
-  stem: string
-  itemLabel: string | null
-  itemStem: string | null
-  analysis: string | null
-  difficulty: Question['difficulty']
-  status: Question['status']
-  options: ResourceOption[]
-  attachments: ResourceAttachment[]
-}
-
-interface ResourceGroup {
-  groupCode: string
-  groupTitle: string
-  groupDirection: string | null
-  groupMaterial: string | null
-  groupSortOrder: number
-  bankCode: string
-  sharedOptions: Array<{ label: string; content: string; sortOrder: number }>
-  attachments: ResourceAttachment[]
-  items: ResourceItem[]
-}
-
-interface ResourceSection {
-  code: string
-  title: string
-  direction: string | null
-  material: string | null
-  sortOrder: number
-  attachments: ResourceAttachment[]
-  groups: ResourceGroup[]
-}
-
-interface ResourceExam {
-  title: string
-  description: string
-  qualifyScore: number
-  startTime: string
-  endTime: string
-  durationMinutes: number
-  timeLimit: boolean
-  attemptLimit: number | null
-  displayMode: Exam['displayMode']
-  questionOrderMode: Exam['questionOrderMode']
-  openType: Exam['openType']
-  status: Exam['status']
-  paperQuestions: Array<{ questionCode: string; score: number; sortOrder: number }>
-}
-
-interface QuestionSetResource {
-  categories: ResourceCategory[]
-  banks: ResourceBank[]
-  sections: ResourceSection[]
-  exams: ResourceExam[]
-}
-
 export interface DemoAttempt {
   id: number
   examId: number
   userId: number
-  status: ExamSessionStatus
+  status: 'IN_PROGRESS' | 'SUBMITTED'
   startedAt: string
   questions: ExamQuestion[]
 }
-
-type ExamSessionStatus = 'IN_PROGRESS' | 'SUBMITTED'
 
 export interface DemoState {
   currentUserId: number | null
@@ -132,12 +39,9 @@ export interface DemoState {
   roles: AdminRole[]
   permissions: AdminPermission[]
   menus: AdminMenu[]
-  categories: Array<ResourceCategory & { id: number }>
+  categories: Array<{ id: number; code: string; name: string; description: string | null; sortOrder: number }>
   banks: QuestionBank[]
-  nodes: QuestionContentNode[]
-  nodeBankIds: Record<number, number>
   questions: Question[]
-  questionIdByCode: Record<string, number>
   correctLabelsByQuestionId: Record<number, string[]>
   exams: Exam[]
   attempts: DemoAttempt[]
@@ -159,7 +63,6 @@ function nextId(state: Pick<DemoState, 'nextId'>) {
 }
 
 function seedState(): DemoState {
-  const resource = questionSet as QuestionSetResource
   const state: DemoState = {
     currentUserId: null,
     departments: [
@@ -170,12 +73,9 @@ function seedState(): DemoState {
     roles: [],
     permissions: [],
     menus: [],
-    categories: [],
+    categories: [{ id: 101, code: 'cet4-demo', name: '四级样例', description: '大学英语四级演示题库分类', sortOrder: 10 }],
     banks: [],
-    nodes: [],
-    nodeBankIds: {},
     questions: [],
-    questionIdByCode: {},
     correctLabelsByQuestionId: {},
     exams: [],
     attempts: [],
@@ -187,8 +87,8 @@ function seedState(): DemoState {
   state.menus = buildMenus()
   state.roles = buildRoles(state.permissions, state.menus)
   state.users = buildUsers()
-  buildQuestionSet(state, resource)
-  buildExams(state, resource.exams)
+  buildQuestionBank(state)
+  buildExam(state)
   seedSubmittedResult(state)
   return state
 }
@@ -229,185 +129,130 @@ function buildUsers(): DemoUser[] {
   ]
 }
 
-function buildQuestionSet(state: DemoState, resource: QuestionSetResource) {
-  const categoryIds = new Map<string, number>()
-  for (const category of resource.categories) {
-    const id = nextId(state)
-    categoryIds.set(category.code, id)
-    state.categories.push({ ...category, id })
-  }
+function buildQuestionBank(state: DemoState) {
+  const bankId = nextId(state)
+  state.banks.push({
+    id: bankId,
+    categoryId: state.categories[0].id,
+    categoryName: state.categories[0].name,
+    name: '四级样例题库',
+    description: '用于演示单选、多选和写作题维护流程',
+    status: 'ACTIVE',
+    questionCount: 0,
+    singleChoiceCount: 0,
+    multipleChoiceCount: 0,
+    writingCount: 0,
+  })
 
-  const bankIds = new Map<string, number>()
-  for (const bank of resource.banks) {
-    const categoryId = categoryIds.get(bank.categoryCode) || state.categories[0].id
-    const id = nextId(state)
-    bankIds.set(bank.code, id)
-    state.banks.push({
-      id,
-      categoryId,
-      categoryName: state.categories.find((item) => item.id === categoryId)?.name || '',
-      name: bank.name,
-      description: bank.description,
-      status: bank.status,
-      questionCount: 0,
-      singleChoiceCount: 0,
-      multipleChoiceCount: 0,
-      writingCount: 0,
-    })
-  }
-
-  const sectionNodeByBankAndCode = new Map<string, QuestionContentNode>()
-  for (const section of resource.sections) {
-    for (const group of section.groups) {
-      const bankId = bankIds.get(group.bankCode)
-      if (!bankId) {
-        continue
-      }
-      const sectionKey = `${bankId}:${section.code}`
-      let sectionNode = sectionNodeByBankAndCode.get(sectionKey)
-      if (!sectionNode) {
-        sectionNode = createNode(state, bankId, null, section.code, 'SECTION', section.title, section.direction, section.material, section.sortOrder, section.attachments, [])
-        sectionNodeByBankAndCode.set(sectionKey, sectionNode)
-      }
-      const sharedOptions = group.sharedOptions.map((option, index) => ({ id: nextId(state), label: option.label, content: option.content, sortOrder: option.sortOrder || (index + 1) * 10 }))
-      const groupNode = createNode(state, bankId, sectionNode.id, group.groupCode, 'GROUP', group.groupTitle, group.groupDirection, group.groupMaterial, group.groupSortOrder, group.attachments, sharedOptions)
-      sectionNode.children.push(groupNode)
-      for (const item of group.items) {
-        const question = createQuestionFromResource(state, bankId, section, group, item)
-        groupNode.questions.push(question)
-      }
-    }
+  const questions: Question[] = [
+    choiceQuestion(state, bankId, 'SINGLE_CHOICE', 'The lecture mainly discusses the importance of regular practice.', ['True', 'False', 'Not given', 'Unknown'], ['A'], '听力材料中的核心观点是持续练习。'),
+    choiceQuestion(state, bankId, 'SINGLE_CHOICE', 'Which word is closest in meaning to "essential"?', ['necessary', 'optional', 'ordinary', 'temporary'], ['A'], 'essential 表示必要的。'),
+    choiceQuestion(state, bankId, 'MULTIPLE_CHOICE', 'Which of the following are effective study habits?', ['Reviewing notes', 'Planning study time', 'Ignoring feedback', 'Practicing with past papers'], ['A', 'B', 'D'], '有效学习习惯包括复习、规划和练习。'),
+    writingQuestion(state, bankId, 'For this part, you are allowed 30 minutes to write a short essay on online learning.'),
+  ]
+  state.questions.push(...questions)
+  for (const question of questions) {
+    state.correctLabelsByQuestionId[question.id] = question.options.filter((option) => option.correct).map((option) => option.label)
   }
   refreshBankCounts(state)
 }
 
-function createNode(
+function choiceQuestion(
   state: DemoState,
   bankId: number,
-  parentId: number | null,
-  nodeCode: string,
-  nodeType: QuestionContentNode['nodeType'],
-  title: string | null,
-  direction: string | null,
-  material: string | null,
-  sortOrder: number,
-  attachments: ResourceAttachment[],
-  sharedOptions: QuestionContentNode['sharedOptions'],
-) {
-  const node: QuestionContentNode = {
-    id: nextId(state),
-    parentId,
-    nodeCode,
-    nodeType,
-    title,
-    direction,
-    material,
-    sortOrder,
-    sharedOptions,
-    attachments: attachments.map((attachment) => createAttachment(state, attachment)),
-    questions: [],
-    children: [],
-  }
-  state.nodes.push(node)
-  state.nodeBankIds[node.id] = bankId
-  return node
-}
-
-function createQuestionFromResource(state: DemoState, bankId: number, section: ResourceSection, group: ResourceGroup, item: ResourceItem) {
-  const bank = state.banks.find((entry) => entry.id === bankId)
-  const options = item.options.map((option) => createOption(state, option))
-  const groupAttachments = group.attachments.map((attachment) => createAttachment(state, attachment))
-  const itemAttachments = item.attachments.map((attachment) => createAttachment(state, attachment))
-  const question: Question = {
+  type: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE',
+  stem: string,
+  labels: string[],
+  correctLabels: string[],
+  analysis: string,
+): Question {
+  return {
     id: nextId(state),
     bankId,
-    bankName: bank?.name || '',
-    type: item.type,
-    stem: item.stem,
-    sectionCode: section.code,
-    sectionTitle: section.title,
-    sectionSortOrder: section.sortOrder,
-    groupCode: group.groupCode,
-    groupTitle: group.groupTitle,
-    groupDirection: group.groupDirection,
-    groupMaterial: group.groupMaterial,
-    groupSortOrder: group.groupSortOrder,
-    itemLabel: item.itemLabel,
-    itemStem: item.itemStem,
-    analysis: item.analysis,
-    difficulty: item.difficulty,
-    status: item.status,
-    options,
-    attachments: [...groupAttachments, ...itemAttachments],
+    bankName: '四级样例题库',
+    type,
+    stem,
+    analysis,
+    difficulty: 'EASY',
+    status: 'ACTIVE',
+    options: labels.map((content, index) => option(state, index, content, correctLabels.includes(String.fromCharCode(65 + index)))),
+    attachments: type === 'SINGLE_CHOICE' ? [listeningAttachment(state)] : [],
   }
-  state.questions.push(question)
-  state.questionIdByCode[item.code] = question.id
-  state.correctLabelsByQuestionId[question.id] = options.filter((option) => option.correct).map((option) => option.label)
-  return question
 }
 
-function createOption(state: DemoState, option: ResourceOption): QuestionOption {
-  return { id: nextId(state), label: option.label, content: option.content, correct: option.correct, sortOrder: option.sortOrder }
-}
-
-function createAttachment(state: Pick<DemoState, 'nextId'>, attachment: ResourceAttachment): QuestionAttachment {
-  return { id: nextId(state), fileName: attachment.fileName, fileUrl: attachment.fileUrl, mediaType: attachment.mediaType, sortOrder: attachment.sortOrder }
-}
-
-function buildExams(state: DemoState, exams: ResourceExam[]) {
-  for (const exam of exams) {
-    const paperQuestions = exam.paperQuestions
-      .map((paperQuestion) => {
-        const sourceId = state.questionIdByCode[paperQuestion.questionCode]
-        const source = state.questions.find((question) => question.id === sourceId)
-        return { paperQuestion, source }
-      })
-      .filter((entry): entry is { paperQuestion: ResourceExam['paperQuestions'][number]; source: Question } => Boolean(entry.source))
-
-    const fallbackQuestions = state.questions.slice(0, 12).map((source, index) => ({
-      paperQuestion: { questionCode: String(source.id), score: isManualReviewType(source.type) ? 30 : 5, sortOrder: (index + 1) * 10 },
-      source,
-    }))
-    const selected = paperQuestions.length ? paperQuestions : fallbackQuestions
-    state.exams.push({
-      id: nextId(state),
-      title: exam.title,
-      description: exam.description,
-      qualifyScore: exam.qualifyScore,
-      startTime: exam.startTime,
-      endTime: exam.endTime,
-      durationMinutes: exam.durationMinutes,
-      timeLimit: exam.timeLimit,
-      attemptLimit: exam.attemptLimit,
-      displayMode: exam.displayMode,
-      questionOrderMode: exam.questionOrderMode,
-      openType: exam.openType,
-      departmentIds: [],
-      rules: [],
-      paperQuestions: selected.map(({ paperQuestion, source }) => ({
-        questionId: source.id,
-        bankId: source.bankId,
-        bankName: source.bankName,
-        type: source.type,
-        stem: source.stem,
-        sectionCode: source.sectionCode,
-        sectionTitle: source.sectionTitle,
-        sectionSortOrder: source.sectionSortOrder,
-        groupCode: source.groupCode,
-        groupTitle: source.groupTitle,
-        groupDirection: source.groupDirection,
-        groupMaterial: source.groupMaterial,
-        groupSortOrder: source.groupSortOrder,
-        itemLabel: source.itemLabel,
-        itemStem: source.itemStem,
-        score: paperQuestion.score,
-        sortOrder: paperQuestion.sortOrder,
-      })),
-      status: exam.status,
-      questionCount: selected.length,
-      totalScore: selected.reduce((sum, item) => sum + item.paperQuestion.score, 0),
-    })
+function writingQuestion(state: DemoState, bankId: number, stem: string): Question {
+  return {
+    id: nextId(state),
+    bankId,
+    bankName: '四级样例题库',
+    type: 'WRITING',
+    stem,
+    analysis: '写作题需要人工阅卷。',
+    difficulty: 'HARD',
+    status: 'ACTIVE',
+    options: [],
+    attachments: [],
   }
+}
+
+function option(state: DemoState, index: number, content: string, correct: boolean): QuestionOption {
+  return { id: nextId(state), label: String.fromCharCode(65 + index), content, correct, sortOrder: (index + 1) * 10 }
+}
+
+function listeningAttachment(state: DemoState): QuestionAttachment {
+  return {
+    id: nextId(state),
+    fileName: '2023-03-cet4-listening.mp3',
+    fileUrl: '/local-assets/cet4/2023-03/set-1/2023-03-cet4-listening.mp3',
+    mediaType: 'AUDIO',
+    sortOrder: 10,
+  }
+}
+
+function buildExam(state: DemoState) {
+  const questions = state.questions
+  const paperQuestions = questions.map((question, index) => ({
+    questionId: question.id,
+    bankId: question.bankId,
+    bankName: question.bankName,
+    type: question.type,
+    stem: question.stem,
+    score: question.type === 'WRITING' ? 30 : 5,
+    sortOrder: (index + 1) * 10,
+  }))
+  state.exams.push({
+    id: nextId(state),
+    title: 'CET-4 四级考试平台演示',
+    description: '以四级真题场景作为样例，演示题库、考试、作答、评分和阅卷流程。',
+    qualifyScore: 36,
+    startTime: '2025-01-01T00:00:00',
+    endTime: '2099-12-31T23:59:59',
+    durationMinutes: 45,
+    timeLimit: true,
+    attemptLimit: null,
+    examMode: 'STRUCTURED',
+    displayMode: 'ALL',
+    questionOrderMode: 'FIXED',
+    openType: 'PUBLIC',
+    departmentIds: [],
+    rules: [],
+    paperQuestions,
+    materials: [
+      {
+        id: nextId(state),
+        title: '听力音频',
+        description: '四级听力演示材料',
+        fileName: '2023-03-cet4-listening.mp3',
+        fileUrl: '/local-assets/cet4/2023-03/set-1/2023-03-cet4-listening.mp3',
+        mediaType: 'AUDIO',
+        sortOrder: 10,
+      },
+    ],
+    answerCardItems: [],
+    status: 'PUBLISHED',
+    questionCount: paperQuestions.length,
+    totalScore: paperQuestions.reduce((sum, question) => sum + question.score, 0),
+  })
 }
 
 function seedSubmittedResult(state: DemoState) {
@@ -419,8 +264,8 @@ function seedSubmittedResult(state: DemoState) {
   const sessionQuestions = buildSessionQuestions(state, exam)
   const answers = sessionQuestions.map((question) => ({
     questionId: question.questionId,
-    selectedLabels: isManualReviewType(question.type) ? [] : [question.options[0]?.label || 'A'],
-    answerText: isManualReviewType(question.type) ? 'This is a demo writing answer.' : null,
+    selectedLabels: isManualReviewType(question.type) ? [] : state.correctLabelsByQuestionId[question.questionId] || [],
+    answerText: isManualReviewType(question.type) ? 'Online learning gives students more flexible access to resources and requires stronger self-discipline.' : null,
   }))
   const result = gradeSubmission(state, exam, user, sessionQuestions, answers)
   state.results.push({ ...result, gradingStatus: 'PENDING_REVIEW' })
@@ -440,45 +285,25 @@ export function buildCurrentUser(state: DemoState, user: DemoUser): CurrentUser 
   }
 }
 
-export function buildContentTree(state: DemoState, bankId: number): QuestionContentTree {
-  const bank = state.banks.find((item) => item.id === bankId)
-  const sections = state.nodes
-    .filter((node) => node.parentId === null && state.nodeBankIds[node.id] === bankId)
-    .sort((a, b) => a.sortOrder - b.sortOrder)
-  return {
-    bankId,
-    bankName: bank?.name || '',
-    sections: clone(sections),
-    ungroupedQuestions: clone(state.questions.filter((question) => question.bankId === bankId && !question.groupCode)),
-  }
-}
-
 export function buildSessionQuestions(state: DemoState, exam: Exam): ExamQuestion[] {
   return exam.paperQuestions
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((paperQuestion) => {
       const source = state.questions.find((question) => question.id === paperQuestion.questionId)
+      const answerCardItem = exam.answerCardItems.find((item) => item.questionNo === Math.abs(paperQuestion.questionId))
       return {
         questionId: paperQuestion.questionId,
         type: paperQuestion.type,
         stem: paperQuestion.stem,
-        sectionCode: paperQuestion.sectionCode,
-        sectionTitle: paperQuestion.sectionTitle,
-        sectionSortOrder: paperQuestion.sectionSortOrder,
-        groupCode: paperQuestion.groupCode,
-        groupTitle: paperQuestion.groupTitle,
-        groupDirection: paperQuestion.groupDirection,
-        groupMaterial: paperQuestion.groupMaterial,
-        groupSortOrder: paperQuestion.groupSortOrder,
-        itemLabel: paperQuestion.itemLabel,
-        itemStem: paperQuestion.itemStem,
         score: paperQuestion.score,
         sortOrder: paperQuestion.sortOrder,
         selectedLabels: [],
         answerText: null,
         attachments: source?.attachments ? clone(source.attachments) : [],
-        options: source?.options.map(({ id, label, content, sortOrder }) => ({ id, label, content, sortOrder })) || [],
+        options: source?.options.map(({ id, label, content, sortOrder }) => ({ id, label, content, sortOrder }))
+          || answerCardItem?.optionLabels.map((label, index) => ({ id: paperQuestion.questionId * 100 - index, label, content: label, sortOrder: (index + 1) * 10 }))
+          || [],
       }
     })
 }
@@ -518,7 +343,7 @@ export function gradeSubmission(
     }
   })
   const hasManualReview = resultQuestions.some((question) => isManualReviewType(question.type))
-  const result: ExamResultDetail = {
+  return {
     id: nextId(state),
     attemptId: nextId(state),
     examId: exam.id,
@@ -538,7 +363,6 @@ export function gradeSubmission(
     submittedAt: nowIso(),
     questions: resultQuestions,
   }
-  return result
 }
 
 function sameLabels(left: string[], right: string[]) {

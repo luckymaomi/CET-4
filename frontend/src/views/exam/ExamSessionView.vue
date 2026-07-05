@@ -14,7 +14,34 @@
 
       <section class="exam-workspace">
         <main class="question-stack">
-          <template v-if="session.displayMode === 'PAGED' && currentQuestion">
+          <template v-if="session.examMode === 'ANSWER_SHEET'">
+            <section v-if="session.materials.length" class="exam-materials" aria-label="试卷材料">
+              <article v-for="material in session.materials" :key="material.id" class="exam-material">
+                <h2>{{ material.title }}</h2>
+                <p v-if="material.description">{{ material.description }}</p>
+                <img v-if="material.mediaType === 'IMAGE'" :src="resolveResourceUrl(material.fileUrl)" :alt="material.fileName" />
+                <audio v-else-if="material.mediaType === 'AUDIO'" :src="resolveResourceUrl(material.fileUrl)" controls />
+                <iframe v-else-if="material.fileUrl.toLowerCase().endsWith('.pdf')" :src="resolveResourceUrl(material.fileUrl)" title="试卷材料" />
+                <el-link v-else :href="resolveResourceUrl(material.fileUrl)" target="_blank">{{ material.fileName }}</el-link>
+              </article>
+            </section>
+
+            <ExamAnswerSheetPanel
+              :questions="session.questions"
+              :single-answers="singleAnswers"
+              :multiple-answers="multipleAnswers"
+              :text-answers="textAnswers"
+              :disabled="submitting || submitted"
+              @schedule-save="scheduleSave"
+              @save-immediately="saveImmediately"
+            />
+
+            <div class="question-submit-row">
+              <el-button type="primary" :loading="submitting" :disabled="submitted" @click="confirmSubmit">提交试卷</el-button>
+            </div>
+          </template>
+
+          <template v-else-if="session.displayMode === 'PAGED' && currentQuestion">
             <ExamQuestionPanel
               :key="currentQuestion.questionId"
               :question="currentQuestion"
@@ -46,14 +73,7 @@
 
           <template v-else-if="session.displayMode === 'ALL'">
             <section v-for="group in displayQuestionGroups" :key="group.id" class="question-display-group">
-              <QuestionGroupContext
-                :section-title="group.sectionTitle"
-                :title="group.title"
-                :direction="group.direction"
-                :material="group.material"
-                :attachments="group.attachments"
-                :shared-options="group.sharedOptions"
-              />
+              <h2>{{ group.title }}</h2>
               <ExamQuestionPanel
                 v-for="question in group.questions"
                 :key="question.questionId"
@@ -64,8 +84,6 @@
                 :multiple-answers="multipleAnswers"
                 :text-answers="textAnswers"
                 :disabled="submitting || submitted"
-                :show-attachments="false"
-                :compact-shared-options="group.compactOptionItems"
                 @schedule-save="scheduleSave"
                 @save-immediately="saveImmediately"
               />
@@ -95,11 +113,11 @@ import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import ExamAnswerCard from '@/components/exam/session/ExamAnswerCard.vue'
+import ExamAnswerSheetPanel from '@/components/exam/session/ExamAnswerSheetPanel.vue'
 import ExamQuestionPanel from '@/components/exam/session/ExamQuestionPanel.vue'
-import QuestionGroupContext from '@/components/exam/QuestionGroupContext.vue'
 import { useAnswerSnapshotSaver } from '@/composables/use-answer-snapshot-saver'
 import { saveExamAnswers, startExam, submitExam, type ExamQuestion, type ExamSession } from '@/api/exam-business'
-import { groupQuestionsForDisplay } from '@/utils/exam-question-groups'
+import { resolveResourceUrl } from '@/utils/resource-url'
 import {
   buildSubmitAnswers,
   countAnsweredQuestions,
@@ -143,11 +161,18 @@ const answeredCount = computed(() => countAnsweredQuestions(session.value?.quest
 const unansweredCount = computed(() => Math.max(0, (session.value?.questions.length ?? 0) - answeredCount.value))
 const hasActiveAttempt = computed(() => Boolean(session.value && !submitted.value))
 const saveStatusText = answerSaver.saveStatusText
-const displayQuestionGroups = computed(() => groupQuestionsForDisplay(session.value?.questions ?? []))
+const displayQuestionGroups = computed(() => groupQuestionsByType(session.value?.questions ?? []))
 const groupedQuestions = computed<AnswerCardGroup[]>(() => {
+  if (session.value?.examMode === 'ANSWER_SHEET') {
+    return [{
+      id: 'ANSWER_SHEET',
+      title: '答题卡',
+      questions: session.value.questions,
+    }]
+  }
   const groups = displayQuestionGroups.value.map((group) => ({
     id: group.id,
-    title: group.title || group.sectionTitle || '试题',
+    title: group.title || '试题',
     questions: group.questions,
   }))
   if (groups.length > 0) {
@@ -266,7 +291,7 @@ function questionGlobalIndex(questionId: number) {
 }
 
 function groupQuestionsByType(questions: ExamQuestion[]) {
-  const typeOrder: ExamQuestion['type'][] = ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'WORD_BANK', 'MATCHING', 'WRITING', 'TRANSLATION']
+  const typeOrder: ExamQuestion['type'][] = ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'WRITING']
   return typeOrder
     .map((type) => ({
       id: type,
@@ -280,7 +305,10 @@ async function selectQuestion(questionId: number) {
   const index = questionGlobalIndex(questionId)
   if (index >= 0) {
     currentIndex.value = index
-    if (session.value?.displayMode === 'ALL') {
+    if (session.value?.examMode === 'ANSWER_SHEET') {
+      await nextTick()
+      document.getElementById(`answer-sheet-question-${questionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    } else if (session.value?.displayMode === 'ALL') {
       await nextTick()
       document.getElementById(`question-${questionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
@@ -416,6 +444,54 @@ function preventUnload(event: BeforeUnloadEvent) {
 .question-display-group {
   display: grid;
   gap: 14px;
+}
+
+.question-display-group h2 {
+  margin: 8px 0 0;
+  color: var(--ks-text);
+  font-size: 16px;
+}
+
+.exam-materials {
+  display: grid;
+  gap: 12px;
+}
+
+.exam-material {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--ks-border);
+  border-radius: var(--ks-radius);
+  background: #fff;
+}
+
+.exam-material h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.exam-material p {
+  margin: 0;
+  color: var(--ks-text-muted);
+  line-height: 1.6;
+}
+
+.exam-material img {
+  width: 100%;
+  max-height: 620px;
+  object-fit: contain;
+}
+
+.exam-material audio {
+  width: 100%;
+}
+
+.exam-material iframe {
+  width: 100%;
+  height: min(72vh, 760px);
+  border: 1px solid var(--ks-border);
+  border-radius: var(--ks-radius);
 }
 
 .question-submit-row {

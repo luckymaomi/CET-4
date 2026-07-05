@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildBankTree,
-  buildQuestionContentTree,
   createQuestionPayload,
   inferMediaType,
   isImageAttachment,
@@ -49,45 +48,6 @@ describe('question bank editor rules', () => {
     expect(questionToPayload(question()).attachments[0]).toEqual({ fileName: 'chart.png', fileUrl: '/chart.png', mediaType: 'IMAGE' })
   })
 
-  it('builds a readable content tree from grouped questions', () => {
-    const tree = buildQuestionContentTree([
-      question({
-        id: 26,
-        type: 'WORD_BANK',
-        sectionCode: 'reading',
-        sectionTitle: 'Part III Reading',
-        sectionSortOrder: 30,
-        groupCode: 'word-bank',
-        groupTitle: 'Section A Word Bank',
-        groupSortOrder: 10,
-        options: [
-          { id: 1, label: 'A', content: 'acknowledged', correct: false, sortOrder: 10 },
-          { id: 2, label: 'B', content: 'amazement', correct: true, sortOrder: 20 },
-        ],
-      }),
-      question({
-        id: 27,
-        type: 'WORD_BANK',
-        sectionCode: 'reading',
-        sectionTitle: 'Part III Reading',
-        sectionSortOrder: 30,
-        groupCode: 'word-bank',
-        groupTitle: 'Section A Word Bank',
-        groupSortOrder: 10,
-        options: [
-          { id: 3, label: 'A', content: 'acknowledged', correct: true, sortOrder: 10 },
-          { id: 4, label: 'B', content: 'amazement', correct: false, sortOrder: 20 },
-        ],
-      }),
-    ])
-
-    expect(tree).toHaveLength(1)
-    expect(tree[0].groups[0]).toMatchObject({
-      title: 'Section A Word Bank',
-      questionCount: 2,
-      sharedOptionCount: 2,
-    })
-  })
 })
 
 function category(overrides: Partial<NamedCategory> = {}): NamedCategory {

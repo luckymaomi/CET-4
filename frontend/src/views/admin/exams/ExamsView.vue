@@ -82,6 +82,8 @@
       v-model:visible="editorVisible"
       v-model:ruleset="ruleset"
       v-model:paper-questions="paperQuestions"
+      v-model:materials="materials"
+      v-model:answer-card-items="answerCardItems"
       v-model:time-range="timeRange"
       v-model:attempt-limit-mode="attemptLimitMode"
       v-model:limited-attempt-count="limitedAttemptCount"
@@ -182,6 +184,8 @@ const departments = ref<Department[]>([])
 const bankQuestions = ref<Record<number, Question[]>>({})
 const ruleset = ref<ExamRuleForm[]>([])
 const paperQuestions = ref<ExamPaperQuestionForm[]>([])
+const materials = ref<ExamPayload['materials']>([])
+const answerCardItems = ref<ExamPayload['answerCardItems']>([])
 const pickerQuestions = ref<Question[]>([])
 const examResults = ref<ExamResult[]>([])
 const paperStale = ref(false)
@@ -214,12 +218,15 @@ const form = reactive<ExamPayload>({
   durationMinutes: 30,
   timeLimit: true,
   attemptLimit: null,
+  examMode: 'STRUCTURED',
   displayMode: 'PAGED',
   questionOrderMode: 'FIXED',
   openType: 'PUBLIC',
   departmentIds: [],
   rules: [],
   paperQuestions: [],
+  materials: [],
+  answerCardItems: [],
 })
 
 const formRules: FormRules<ExamPayload> = {
@@ -284,6 +291,7 @@ async function fillEditor(exam: Exam) {
   form.durationMinutes = exam.durationMinutes
   form.timeLimit = exam.timeLimit
   form.attemptLimit = exam.attemptLimit
+  form.examMode = exam.examMode
   form.displayMode = exam.displayMode
   form.questionOrderMode = exam.questionOrderMode
   form.openType = exam.openType
@@ -296,6 +304,8 @@ async function fillEditor(exam: Exam) {
     await loadBankQuestions(rule.bankId)
   }
   paperQuestions.value = exam.paperQuestions.map(toPaperQuestionForm)
+  materials.value = exam.materials.map(({ id, ...material }) => material)
+  answerCardItems.value = exam.answerCardItems.map(({ id, ...item }) => item)
   paperStale.value = false
 }
 
@@ -309,13 +319,18 @@ function resetForm() {
   form.durationMinutes = 30
   form.timeLimit = true
   form.attemptLimit = null
+  form.examMode = 'STRUCTURED'
   form.displayMode = 'PAGED'
   form.questionOrderMode = 'FIXED'
   form.openType = 'PUBLIC'
   form.departmentIds = []
   form.rules = []
   form.paperQuestions = []
+  form.materials = []
+  form.answerCardItems = []
   paperQuestions.value = []
+  materials.value = []
+  answerCardItems.value = []
   pickerQuestions.value = []
   paperStale.value = false
   previewVisible.value = false
@@ -529,10 +544,19 @@ async function buildPayload(): Promise<ExamPayload | null> {
     await loadBankQuestions(rule.bankId)
   }
   const payloadRules = toExamRulePayloads(ruleset.value)
-  if (paperQuestions.value.length === 0 && payloadRules.length > 0) {
+  if (form.examMode === 'ANSWER_SHEET') {
+    if (materials.value.length === 0) {
+      ElMessage.error('请先添加试卷材料')
+      return null
+    }
+    if (answerCardItems.value.length === 0) {
+      ElMessage.error('请先配置答题卡')
+      return null
+    }
+  } else if (paperQuestions.value.length === 0 && payloadRules.length > 0) {
     await generatePaperQuestions()
   }
-  if (paperQuestions.value.length === 0) {
+  if (form.examMode === 'STRUCTURED' && paperQuestions.value.length === 0) {
     ElMessage.error('请先按规则生成题目明细或手工加入试题')
     return null
   }
@@ -565,12 +589,15 @@ async function buildPayload(): Promise<ExamPayload | null> {
     durationMinutes: form.durationMinutes,
     timeLimit: form.timeLimit,
     attemptLimit: form.attemptLimit,
+    examMode: form.examMode,
     displayMode: form.displayMode,
     questionOrderMode: form.questionOrderMode,
     openType: form.openType,
     departmentIds: [...form.departmentIds],
-    rules: payloadRules,
-    paperQuestions: toExamPaperQuestionPayloads(paperQuestions.value),
+    rules: form.examMode === 'ANSWER_SHEET' ? [] : payloadRules,
+    paperQuestions: form.examMode === 'ANSWER_SHEET' ? [] : toExamPaperQuestionPayloads(paperQuestions.value),
+    materials: form.examMode === 'ANSWER_SHEET' ? materials.value : [],
+    answerCardItems: form.examMode === 'ANSWER_SHEET' ? answerCardItems.value : [],
   }
 }
 

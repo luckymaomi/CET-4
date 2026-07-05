@@ -20,12 +20,15 @@ public record ExamSaveRequest(
         @NotNull @Min(1) Integer durationMinutes,
         @NotNull Boolean timeLimit,
         @Min(1) Integer attemptLimit,
+        @NotBlank String examMode,
         @NotBlank String displayMode,
         @NotBlank String questionOrderMode,
         @NotBlank String openType,
         List<Long> departmentIds,
         List<@Valid ExamRuleRequest> rules,
-        List<@Valid ExamPaperQuestionRequest> paperQuestions
+        List<@Valid ExamPaperQuestionRequest> paperQuestions,
+        List<@Valid ExamMaterialRequest> materials,
+        List<@Valid ExamAnswerCardItemRequest> answerCardItems
 ) {
 }
 

@@ -145,23 +145,140 @@ class ExamBusinessFlowTests {
     }
 
     @Test
-    void seededCet4ExamUsesQuestionSetAudioAttachment() throws Exception {
+    void seededDemoExamUsesSimpleQuestionBankAudioAttachment() throws Exception {
         String token = adminToken();
 
         mockMvc.perform(post("/api/exam/{examId}/start", 1)
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.title").value("2023年03月英语四级真题第一套"))
-                .andExpect(jsonPath("$.data.questions.length()").value(57))
-                .andExpect(jsonPath("$.data.questions[0].type").value("WRITING"))
-                .andExpect(jsonPath("$.data.questions[1].groupCode").value("listening-news-1"))
-                .andExpect(jsonPath("$.data.questions[26].type").value("WORD_BANK"))
-                .andExpect(jsonPath("$.data.questions[36].type").value("MATCHING"))
-                .andExpect(jsonPath("$.data.questions[56].type").value("TRANSLATION"))
+                .andExpect(jsonPath("$.data.title").value("CET-4 四级考试平台演示"))
+                .andExpect(jsonPath("$.data.examMode").value("STRUCTURED"))
+                .andExpect(jsonPath("$.data.questions.length()").value(4))
+                .andExpect(jsonPath("$.data.questions[0].type").value("SINGLE_CHOICE"))
+                .andExpect(jsonPath("$.data.questions[1].type").value("SINGLE_CHOICE"))
+                .andExpect(jsonPath("$.data.questions[2].type").value("MULTIPLE_CHOICE"))
+                .andExpect(jsonPath("$.data.questions[3].type").value("WRITING"))
                 .andExpect(jsonPath("$.data.questions[*].attachments[*].fileUrl").value(hasItems(
                         "/local-assets/cet4/2023-03/set-1/2023-03-cet4-listening.mp3"
                 )))
                 .andExpect(jsonPath("$.data.questions[*].attachments[*].mediaType").value(hasItems("AUDIO")));
+    }
+
+    @Test
+    void answerSheetExamSavesMaterialsPublishesAndScoresByAnswerCardSnapshot() throws Exception {
+        String token = adminToken();
+
+        String response = mockMvc.perform(post("/api/admin/exams")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "答题卡试卷考试",
+                                  "description": "用于验证试卷材料和答题卡分离",
+                                  "qualifyScore": 10,
+                                  "startTime": "2026-01-01T00:00:00",
+                                  "endTime": "2026-12-31T23:59:59",
+                                  "durationMinutes": 45,
+                                  "timeLimit": false,
+                                  "attemptLimit": null,
+                                  "examMode": "ANSWER_SHEET",
+                                  "displayMode": "ALL",
+                                  "questionOrderMode": "FIXED",
+                                  "openType": "PUBLIC",
+                                  "departmentIds": [],
+                                  "rules": [],
+                                  "paperQuestions": [],
+                                  "materials": [
+                                    {
+                                      "title": "听力材料",
+                                      "description": "上方试卷材料",
+                                      "fileName": "2023-03-cet4-listening.mp3",
+                                      "fileUrl": "/local-assets/cet4/2023-03/set-1/2023-03-cet4-listening.mp3",
+                                      "mediaType": "AUDIO",
+                                      "sortOrder": 10
+                                    }
+                                  ],
+                                  "answerCardItems": [
+                                    {
+                                      "questionNo": 1,
+                                      "answerType": "SINGLE_CHOICE",
+                                      "optionLabels": ["A", "B", "C", "D"],
+                                      "correctLabels": ["B"],
+                                      "score": 5,
+                                      "sortOrder": 10
+                                    },
+                                    {
+                                      "questionNo": 2,
+                                      "answerType": "MULTIPLE_CHOICE",
+                                      "optionLabels": ["A", "B", "C", "D"],
+                                      "correctLabels": ["A", "C"],
+                                      "score": 5,
+                                      "sortOrder": 20
+                                    },
+                                    {
+                                      "questionNo": 3,
+                                      "answerType": "WRITING",
+                                      "optionLabels": [],
+                                      "correctLabels": [],
+                                      "score": 10,
+                                      "sortOrder": 30
+                                    }
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.examMode").value("ANSWER_SHEET"))
+                .andExpect(jsonPath("$.data.materials[0].mediaType").value("AUDIO"))
+                .andExpect(jsonPath("$.data.answerCardItems.length()").value(3))
+                .andExpect(jsonPath("$.data.totalScore").value(20))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long examId = objectMapper.readTree(response).at("/data/id").asLong();
+
+        mockMvc.perform(post("/api/admin/exams/{examId}/publish", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("PUBLISHED"))
+                .andExpect(jsonPath("$.data.questionCount").value(3))
+                .andExpect(jsonPath("$.data.totalScore").value(20));
+
+        mockMvc.perform(post("/api/exam/{examId}/start", examId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.examMode").value("ANSWER_SHEET"))
+                .andExpect(jsonPath("$.data.materials[0].fileUrl").value("/local-assets/cet4/2023-03/set-1/2023-03-cet4-listening.mp3"))
+                .andExpect(jsonPath("$.data.questions[0].questionId").value(-1))
+                .andExpect(jsonPath("$.data.questions[0].stem").value("第 1 题"))
+                .andExpect(jsonPath("$.data.questions[0].options.length()").value(4))
+                .andExpect(jsonPath("$.data.questions[2].type").value("WRITING"));
+
+        String submitResponse = mockMvc.perform(post("/api/exam/{examId}/submit", examId)
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "answers": [
+                                    {"questionId": -1, "selectedLabels": ["B"]},
+                                    {"questionId": -2, "selectedLabels": ["A", "C"]},
+                                    {"questionId": -3, "answerText": "Answer sheet writing response."}
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalScore").value(20))
+                .andExpect(jsonPath("$.data.objectiveScore").value(10))
+                .andExpect(jsonPath("$.data.obtainedScore").value(10))
+                .andExpect(jsonPath("$.data.gradingStatus").value("PENDING_REVIEW"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long resultId = objectMapper.readTree(submitResponse).at("/data/id").asLong();
+
+        mockMvc.perform(get("/api/admin/results/{resultId}", resultId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.questions[2].answerText").value("Answer sheet writing response."));
     }
 
     @Test
@@ -466,6 +583,7 @@ class ExamBusinessFlowTests {
                                   "durationMinutes": 20,
                                   "timeLimit": false,
                                   "attemptLimit": null,
+                                  "examMode": "STRUCTURED",
                                   "displayMode": "ALL",
                                   "questionOrderMode": "FIXED",
                                   "openType": "PUBLIC",
@@ -476,13 +594,17 @@ class ExamBusinessFlowTests {
                                       "singleCount": 1,
                                       "singleScore": 3,
                                       "multipleCount": 1,
-                                      "multipleScore": 7
+                                      "multipleScore": 7,
+                                      "writingCount": 0,
+                                      "writingScore": 0
                                     }
                                   ],
                                   "paperQuestions": [
                                     {"questionId": %d, "score": 7, "sortOrder": 10},
                                     {"questionId": %d, "score": 3, "sortOrder": 20}
-                                  ]
+                                  ],
+                                  "materials": [],
+                                  "answerCardItems": []
                                 }
                                 """.formatted(bankId, multipleQuestionId, singleQuestionId)))
                 .andExpect(status().isOk())
@@ -588,7 +710,7 @@ class ExamBusinessFlowTests {
                         assertThat(sheet.getSheetName()).isEqualTo("试卷");
                         assertThat(sheet.getRow(0).getCell(0).getStringCellValue()).isEqualTo("顺序");
                         assertThat(sheet.getRow(1).getCell(4).getStringCellValue()).isNotBlank();
-                        assertThat(sheet.getRow(1).getCell(5).getStringCellValue()).isNotBlank();
+                        assertThat(sheet.getRow(1).getCell(7).getStringCellValue()).isNotBlank();
                     }
                 });
 
@@ -672,6 +794,7 @@ class ExamBusinessFlowTests {
                                   "durationMinutes": 20,
                                   "timeLimit": false,
                                   "attemptLimit": null,
+                                  "examMode": "STRUCTURED",
                                   "displayMode": "PAGED",
                                   "questionOrderMode": "FIXED",
                                   "openType": "PUBLIC",
@@ -686,7 +809,10 @@ class ExamBusinessFlowTests {
                                       "writingCount": 0,
                                       "writingScore": 0
                                     }
-                                  ]
+                                  ],
+                                  "paperQuestions": [],
+                                  "materials": [],
+                                  "answerCardItems": []
                                 }
                                 """.formatted(bankId)))
                 .andExpect(status().isOk())
@@ -716,6 +842,7 @@ class ExamBusinessFlowTests {
                                   "durationMinutes": 20,
                                   "timeLimit": false,
                                   "attemptLimit": null,
+                                  "examMode": "STRUCTURED",
                                   "displayMode": "PAGED",
                                   "questionOrderMode": "FIXED",
                                   "openType": "PUBLIC",
@@ -730,7 +857,10 @@ class ExamBusinessFlowTests {
                                       "writingCount": 0,
                                       "writingScore": 0
                                     }
-                                  ]
+                                  ],
+                                  "paperQuestions": [],
+                                  "materials": [],
+                                  "answerCardItems": []
                                 }
                                 """.formatted(bankId)))
                 .andExpect(status().isConflict())
@@ -956,7 +1086,7 @@ class ExamBusinessFlowTests {
                 "file",
                 "questions.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                questionWorkbook("2023年03月英语四级第一套 - 听力", "AC")
+                questionWorkbook("四级样例题库", "AC")
         );
         mockMvc.perform(multipart("/api/admin/questions/import")
                         .file(file)
@@ -971,7 +1101,7 @@ class ExamBusinessFlowTests {
                 .andExpect(jsonPath("$.data.records[0].stem").value("Excel import listening question"))
                 .andExpect(jsonPath("$.data.records[0].attachments.length()").value(0));
 
-        mockMvc.perform(get("/api/admin/question-banks?page=1&size=20&keyword=2023年03月英语四级第一套 - 听力")
+        mockMvc.perform(get("/api/admin/question-banks?page=1&size=20&keyword=四级样例题库")
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.records[0].questionCount").value(greaterThanOrEqualTo(1)))
@@ -987,7 +1117,7 @@ class ExamBusinessFlowTests {
                 "file",
                 "questions-invalid.xlsx",
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                questionWorkbook("2023年03月英语四级第一套 - 听力", "A,C")
+                questionWorkbook("四级样例题库", "A,C")
         );
         mockMvc.perform(multipart("/api/admin/questions/import")
                         .file(invalidFile)
@@ -1143,6 +1273,7 @@ class ExamBusinessFlowTests {
                                 {
                                   %s,
                                   "departmentIds": [],
+                                  "examMode": "STRUCTURED",
                                   "rules": [
                                     {
                                       "bankId": %d,
@@ -1153,7 +1284,10 @@ class ExamBusinessFlowTests {
                                       "writingCount": %d,
                                       "writingScore": %d
                                     }
-                                  ]
+                                  ],
+                                  "paperQuestions": [],
+                                  "materials": [],
+                                  "answerCardItems": []
                                 }
                                 """.formatted(fields, bankId, singleCount, singleScore, multipleCount, multipleScore, writingCount, writingScore)))
                 .andExpect(status().isOk())

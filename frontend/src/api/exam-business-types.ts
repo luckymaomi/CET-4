@@ -61,21 +61,36 @@ export interface QuestionAttachment extends QuestionAttachmentPayload {
   sortOrder: number
 }
 
+export interface ExamMaterialPayload {
+  title: string
+  description: string
+  fileName: string
+  fileUrl: string
+  mediaType: QuestionAttachmentPayload['mediaType']
+  sortOrder: number
+}
+
+export interface ExamMaterial extends ExamMaterialPayload {
+  id: number
+}
+
+export interface ExamAnswerCardItemPayload {
+  questionNo: number
+  answerType: QuestionPayload['type']
+  optionLabels: string[]
+  correctLabels: string[]
+  score: number
+  sortOrder: number
+}
+
+export interface ExamAnswerCardItem extends ExamAnswerCardItemPayload {
+  id: number
+}
+
 export interface QuestionPayload {
   bankId: number
-  nodeId?: number | null
   type: QuestionTypeCode
   stem: string
-  sectionCode?: string | null
-  sectionTitle?: string | null
-  sectionSortOrder?: number | null
-  groupCode?: string | null
-  groupTitle?: string | null
-  groupDirection?: string | null
-  groupMaterial?: string | null
-  groupSortOrder?: number | null
-  itemLabel?: string | null
-  itemStem?: string | null
   analysis: string
   difficulty: 'EASY' | 'HARD'
   status: 'ACTIVE' | 'DISABLED'
@@ -90,72 +105,11 @@ export interface Question {
   bankName: string
   type: QuestionPayload['type']
   stem: string
-  sectionCode?: string | null
-  sectionTitle?: string | null
-  sectionSortOrder?: number | null
-  groupCode?: string | null
-  groupTitle?: string | null
-  groupDirection?: string | null
-  groupMaterial?: string | null
-  groupSortOrder?: number | null
-  itemLabel?: string | null
-  itemStem?: string | null
   analysis: string | null
   difficulty: QuestionPayload['difficulty']
   status: QuestionPayload['status']
   options: QuestionOption[]
   attachments: QuestionAttachment[]
-}
-
-export interface QuestionNodeOptionPayload {
-  label: string
-  content: string
-}
-
-export interface QuestionNodeOption extends QuestionNodeOptionPayload {
-  id: number
-  sortOrder: number
-}
-
-export interface QuestionContentNode {
-  id: number
-  parentId: number | null
-  nodeCode: string
-  nodeType: 'SECTION' | 'GROUP'
-  title: string | null
-  direction: string | null
-  material: string | null
-  sortOrder: number
-  sharedOptions: QuestionNodeOption[]
-  attachments: QuestionAttachment[]
-  questions: Question[]
-  children: QuestionContentNode[]
-}
-
-export interface QuestionContentTree {
-  bankId: number
-  bankName: string
-  sections: QuestionContentNode[]
-  ungroupedQuestions: Question[]
-}
-
-export interface QuestionNodePayload {
-  parentId?: number | null
-  nodeCode: string
-  nodeType: QuestionContentNode['nodeType']
-  title: string
-  direction: string
-  material: string
-  sortOrder: number
-  sharedOptions: QuestionNodeOptionPayload[]
-  attachments: QuestionAttachmentPayload[]
-}
-
-export interface QuestionBankPackageImportResult {
-  bankId: number
-  bankName: string
-  nodeCount: number
-  questionCount: number
 }
 
 export interface ExamPayload {
@@ -167,12 +121,15 @@ export interface ExamPayload {
   durationMinutes: number
   timeLimit: boolean
   attemptLimit: number | null
+  examMode: 'STRUCTURED' | 'ANSWER_SHEET'
   displayMode: 'PAGED' | 'ALL'
   questionOrderMode: 'FIXED' | 'RANDOM'
   openType: 'PUBLIC' | 'DEPARTMENT'
   departmentIds: number[]
   rules: ExamRulePayload[]
   paperQuestions: ExamPaperQuestionPayload[]
+  materials: ExamMaterialPayload[]
+  answerCardItems: ExamAnswerCardItemPayload[]
 }
 
 export interface ExamRulePayload {
@@ -202,16 +159,6 @@ export interface ExamPaperQuestion extends ExamPaperQuestionPayload {
   bankName: string
   type: QuestionPayload['type']
   stem: string
-  sectionCode?: string | null
-  sectionTitle?: string | null
-  sectionSortOrder?: number | null
-  groupCode?: string | null
-  groupTitle?: string | null
-  groupDirection?: string | null
-  groupMaterial?: string | null
-  groupSortOrder?: number | null
-  itemLabel?: string | null
-  itemStem?: string | null
 }
 
 export interface Exam {
@@ -226,12 +173,15 @@ export interface Exam {
   durationMinutes: number
   timeLimit: boolean
   attemptLimit: number | null
+  examMode: ExamPayload['examMode']
   displayMode: ExamPayload['displayMode']
   questionOrderMode: ExamPayload['questionOrderMode']
   openType: ExamPayload['openType']
   departmentIds: number[]
   rules: ExamRule[]
   paperQuestions: ExamPaperQuestion[]
+  materials: ExamMaterial[]
+  answerCardItems: ExamAnswerCardItem[]
   status: 'DRAFT' | 'PUBLISHED' | 'CLOSED'
 }
 
@@ -246,16 +196,6 @@ export interface ExamQuestion {
   questionId: number
   type: QuestionPayload['type']
   stem: string
-  sectionCode?: string | null
-  sectionTitle?: string | null
-  sectionSortOrder?: number | null
-  groupCode?: string | null
-  groupTitle?: string | null
-  groupDirection?: string | null
-  groupMaterial?: string | null
-  groupSortOrder?: number | null
-  itemLabel?: string | null
-  itemStem?: string | null
   score: number
   sortOrder: number
   selectedLabels: string[]
@@ -269,9 +209,11 @@ export interface ExamSession {
   attemptId: number
   title: string
   durationMinutes: number
+  examMode: ExamPayload['examMode']
   displayMode: ExamPayload['displayMode']
   startedAt: string
   attemptStatus: 'IN_PROGRESS' | 'SUBMITTED'
+  materials: ExamMaterial[]
   questions: ExamQuestion[]
 }
 
@@ -299,16 +241,6 @@ export interface ExamResultQuestion {
   questionId: number
   type: QuestionPayload['type']
   stem: string
-  sectionCode?: string | null
-  sectionTitle?: string | null
-  sectionSortOrder?: number | null
-  groupCode?: string | null
-  groupTitle?: string | null
-  groupDirection?: string | null
-  groupMaterial?: string | null
-  groupSortOrder?: number | null
-  itemLabel?: string | null
-  itemStem?: string | null
   analysis: string | null
   score: number
   obtainedScore: number

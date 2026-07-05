@@ -9,11 +9,9 @@ import type {
   QuestionAttachment,
   QuestionAttachmentPayload,
   QuestionBank,
-  QuestionContentNode,
   QuestionOption,
 } from '../../exam-business-types'
 import {
-  buildContentTree,
   buildSessionQuestions,
   clone,
   currentDemoState,
@@ -26,12 +24,7 @@ import {
 import { isManualReviewType } from '@/utils/question-types'
 
 function paginate<T>(records: T[], page: number, size: number): PageResult<T> {
-  return {
-    records: clone(records.slice((page - 1) * size, page * size)),
-    total: records.length,
-    page,
-    size,
-  }
+  return { records: clone(records.slice((page - 1) * size, page * size)), total: records.length, page, size }
 }
 
 function currentUser() {
@@ -73,32 +66,22 @@ function createAttachment(payload: QuestionAttachmentPayload, index: number): Qu
   return { id: nextId(currentDemoState()), ...payload, sortOrder: (index + 1) * 10 }
 }
 
-function findNode(nodeId: number) {
-  return currentDemoState().nodes.find((node) => node.id === nodeId)
-}
-
-function removeNodeFromTree(nodeId: number) {
-  const state = currentDemoState()
-  const ids = new Set<number>([nodeId])
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const node of state.nodes) {
-      if (node.parentId && ids.has(node.parentId) && !ids.has(node.id)) {
-        ids.add(node.id)
-        changed = true
-      }
-    }
-  }
-  state.nodes = state.nodes.filter((node) => !ids.has(node.id))
-  for (const node of state.nodes) {
-    node.children = node.children.filter((child) => !ids.has(child.id))
-  }
-}
-
 function toExamFromPayload(id: number, payload: ExamPayload, status: Exam['status']): Exam {
   const state = currentDemoState()
-  const paperQuestions = payload.paperQuestions
+  const paperQuestions = payload.examMode === 'ANSWER_SHEET'
+    ? payload.answerCardItems
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((item) => ({
+          questionId: -item.questionNo,
+          bankId: 0,
+          bankName: '答题卡',
+          type: item.answerType,
+          stem: `第 ${item.questionNo} 题`,
+          score: item.score,
+          sortOrder: item.sortOrder,
+        }))
+    : payload.paperQuestions
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((paperQuestion) => {
@@ -112,16 +95,6 @@ function toExamFromPayload(id: number, payload: ExamPayload, status: Exam['statu
         bankName: source.bankName,
         type: source.type,
         stem: source.stem,
-        sectionCode: source.sectionCode,
-        sectionTitle: source.sectionTitle,
-        sectionSortOrder: source.sectionSortOrder,
-        groupCode: source.groupCode,
-        groupTitle: source.groupTitle,
-        groupDirection: source.groupDirection,
-        groupMaterial: source.groupMaterial,
-        groupSortOrder: source.groupSortOrder,
-        itemLabel: source.itemLabel,
-        itemStem: source.itemStem,
         score: paperQuestion.score,
         sortOrder: paperQuestion.sortOrder,
       }
@@ -137,12 +110,15 @@ function toExamFromPayload(id: number, payload: ExamPayload, status: Exam['statu
     durationMinutes: payload.durationMinutes,
     timeLimit: payload.timeLimit,
     attemptLimit: payload.attemptLimit,
+    examMode: payload.examMode,
     displayMode: payload.displayMode,
     questionOrderMode: payload.questionOrderMode,
     openType: payload.openType,
     departmentIds: [...payload.departmentIds],
     rules,
     paperQuestions,
+    materials: payload.materials.map((material) => ({ id: nextId(state), ...material })),
+    answerCardItems: payload.answerCardItems.map((item) => ({ id: nextId(state), ...item })),
     status,
     totalScore: paperQuestions.reduce((sum, question) => sum + question.score, 0),
     questionCount: paperQuestions.length,
@@ -158,10 +134,7 @@ function updateAttemptAnswers(examId: number, answers: Array<{ questionId: numbe
   const answerMap = new Map(answers.map((answer) => [answer.questionId, answer]))
   attempt.questions = attempt.questions.map((question) => {
     const answer = answerMap.get(question.questionId)
-    if (!answer) {
-      return question
-    }
-    return { ...question, selectedLabels: answer.selectedLabels || [], answerText: answer.answerText || null }
+    return answer ? { ...question, selectedLabels: answer.selectedLabels || [], answerText: answer.answerText || null } : question
   })
   return attempt
 }
@@ -176,9 +149,11 @@ function toSession(attempt: { id: number; examId: number; startedAt: string; sta
     attemptId: attempt.id,
     title: exam.title,
     durationMinutes: exam.durationMinutes,
+    examMode: exam.examMode,
     displayMode: exam.displayMode,
     startedAt: attempt.startedAt,
     attemptStatus: attempt.status,
+    materials: clone(exam.materials),
     questions: clone(attempt.questions),
   }
 }
@@ -212,21 +187,20 @@ function questionFromPayload(id: number, payload: Parameters<ExamBusinessAdapter
     bankName: bankName(payload.bankId),
     type: payload.type,
     stem: payload.stem,
-    sectionCode: payload.sectionCode,
-    sectionTitle: payload.sectionTitle,
-    sectionSortOrder: payload.sectionSortOrder,
-    groupCode: payload.groupCode,
-    groupTitle: payload.groupTitle,
-    groupDirection: payload.groupDirection,
-    groupMaterial: payload.groupMaterial,
-    groupSortOrder: payload.groupSortOrder,
-    itemLabel: payload.itemLabel,
-    itemStem: payload.itemStem,
     analysis: payload.analysis,
     difficulty: payload.difficulty,
     status: payload.status,
     options: payload.options.map(createQuestionOption),
     attachments: payload.attachments.map(createAttachment),
+  }
+}
+
+function seedAnswerCardCorrectLabels(state: ReturnType<typeof currentDemoState>, payload: ExamPayload) {
+  if (payload.examMode !== 'ANSWER_SHEET') {
+    return
+  }
+  for (const item of payload.answerCardItems) {
+    state.correctLabelsByQuestionId[-item.questionNo] = [...item.correctLabels]
   }
 }
 
@@ -286,106 +260,6 @@ export const demoExamBusinessAdapter: ExamBusinessAdapter = {
     }
     Object.assign(bank, { ...payload, categoryName: categoryName(payload.categoryId) })
     return clone(bank)
-  },
-  async fetchQuestionContentTree(bankId) {
-    return buildContentTree(currentDemoState(), bankId)
-  },
-  async createQuestionNode(bankId, payload) {
-    const state = currentDemoState()
-    const node: QuestionContentNode = {
-      id: nextId(state),
-      parentId: payload.parentId ?? null,
-      nodeCode: payload.nodeCode,
-      nodeType: payload.nodeType,
-      title: payload.title,
-      direction: payload.direction,
-      material: payload.material,
-      sortOrder: payload.sortOrder,
-      sharedOptions: payload.sharedOptions.map((option, index) => ({ id: nextId(state), ...option, sortOrder: (index + 1) * 10 })),
-      attachments: payload.attachments.map(createAttachment),
-      questions: [],
-      children: [],
-    }
-    state.nodeBankIds[node.id] = bankId
-    state.nodes.push(node)
-    const parent = payload.parentId ? findNode(payload.parentId) : null
-    parent?.children.push(node)
-    return clone(node)
-  },
-  async updateQuestionNode(nodeId, payload) {
-    const node = findNode(nodeId)
-    if (!node) {
-      throw new Error('节点不存在')
-    }
-    Object.assign(node, {
-      parentId: payload.parentId ?? null,
-      nodeCode: payload.nodeCode,
-      nodeType: payload.nodeType,
-      title: payload.title,
-      direction: payload.direction,
-      material: payload.material,
-      sortOrder: payload.sortOrder,
-      sharedOptions: payload.sharedOptions.map((option, index) => ({ id: nextId(currentDemoState()), ...option, sortOrder: (index + 1) * 10 })),
-      attachments: payload.attachments.map(createAttachment),
-    })
-    return clone(node)
-  },
-  async deleteQuestionNode(nodeId) {
-    removeNodeFromTree(nodeId)
-  },
-  async importQuestionsToGroup(nodeId) {
-    const state = currentDemoState()
-    const node = findNode(nodeId)
-    if (!node) {
-      throw new Error('节点不存在')
-    }
-    const bankId = state.nodeBankIds[nodeId]
-    const imported = ['A', 'B', 'C', 'D'].map((label, index) => {
-      const question: Question = {
-        id: nextId(state),
-        bankId,
-        bankName: bankName(bankId),
-        type: 'SINGLE_CHOICE',
-        stem: `演示导入试题 ${index + 1}`,
-        sectionCode: null,
-        sectionTitle: null,
-        sectionSortOrder: null,
-        groupCode: node.nodeCode,
-        groupTitle: node.title,
-        groupDirection: node.direction,
-        groupMaterial: node.material,
-        groupSortOrder: node.sortOrder,
-        itemLabel: String(index + 1),
-        itemStem: null,
-        analysis: '演示导入解析',
-        difficulty: 'EASY',
-        status: 'ACTIVE',
-        options: ['A', 'B', 'C', 'D'].map((optionLabel, optionIndex) => createQuestionOption({ label: optionLabel, content: `选项 ${optionLabel}`, correct: optionLabel === label }, optionIndex)),
-        attachments: clone(node.attachments),
-      }
-      state.correctLabelsByQuestionId[question.id] = [label]
-      return question
-    })
-    state.questions.push(...imported)
-    node.questions.push(...imported)
-    refreshBankCounts(state)
-    return { successCount: imported.length, failureCount: 0, errors: [] }
-  },
-  async downloadQuestionBankPackage(bankId) {
-    const tree = buildContentTree(currentDemoState(), bankId)
-    return makeTextBlob(`${tree.bankName}.json`, JSON.stringify(tree, null, 2))
-  },
-  async importQuestionBankPackage(file) {
-    const state = currentDemoState()
-    const name = `${file.name.replace(/\.[^.]+$/, '') || '演示题库'}-导入-${state.nextId}`
-    const source = state.banks[0]
-    const bank = await demoExamBusinessAdapter.createQuestionBank({
-      categoryId: source.categoryId,
-      name,
-      description: '演示环境导入的题库包',
-      status: 'ACTIVE',
-    })
-    return { bankId: bank.id, bankName: bank.name, nodeCount: 0, questionCount: 0 }
   },
   async fetchQuestions(params) {
     const keyword = params.keyword?.trim().toLowerCase()
@@ -450,6 +324,7 @@ export const demoExamBusinessAdapter: ExamBusinessAdapter = {
   async createExam(payload) {
     const state = currentDemoState()
     const exam = toExamFromPayload(nextId(state), payload, 'DRAFT')
+    seedAnswerCardCorrectLabels(state, payload)
     state.exams.push(exam)
     return clone(exam)
   },
@@ -461,6 +336,7 @@ export const demoExamBusinessAdapter: ExamBusinessAdapter = {
     }
     const status = state.exams[index].status === 'CLOSED' ? 'CLOSED' : 'DRAFT'
     const exam = toExamFromPayload(id, payload, status)
+    seedAnswerCardCorrectLabels(state, payload)
     state.exams[index] = exam
     return clone(exam)
   },

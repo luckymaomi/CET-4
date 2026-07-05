@@ -12,9 +12,6 @@ import type {
   Question,
   QuestionAttachmentPayload,
   QuestionBank,
-  QuestionBankPackageImportResult,
-  QuestionContentNode,
-  QuestionContentTree,
 } from '../../exam-business-types'
 
 export const realExamBusinessAdapter: ExamBusinessAdapter = {
@@ -43,37 +40,6 @@ export const realExamBusinessAdapter: ExamBusinessAdapter = {
   },
   async updateQuestionBank(id, payload) {
     const response = await apiClient.put<ApiResponse<QuestionBank>>(`/api/admin/question-banks/${id}`, payload)
-    return response.data.data
-  },
-  async fetchQuestionContentTree(bankId) {
-    const response = await apiClient.get<ApiResponse<QuestionContentTree>>(`/api/admin/question-banks/${bankId}/content-tree`)
-    return response.data.data
-  },
-  async createQuestionNode(bankId, payload) {
-    const response = await apiClient.post<ApiResponse<QuestionContentNode>>(`/api/admin/question-banks/${bankId}/nodes`, payload)
-    return response.data.data
-  },
-  async updateQuestionNode(nodeId, payload) {
-    const response = await apiClient.put<ApiResponse<QuestionContentNode>>(`/api/admin/question-banks/nodes/${nodeId}`, payload)
-    return response.data.data
-  },
-  async deleteQuestionNode(nodeId) {
-    await apiClient.delete<ApiResponse<void>>(`/api/admin/question-banks/nodes/${nodeId}`)
-  },
-  async importQuestionsToGroup(nodeId, file) {
-    const form = new FormData()
-    form.append('file', file)
-    const response = await apiClient.post<ApiResponse<ExcelImportResult>>(`/api/admin/question-banks/nodes/${nodeId}/questions/import`, form)
-    return response.data.data
-  },
-  async downloadQuestionBankPackage(bankId) {
-    const response = await apiClient.get(`/api/admin/question-banks/${bankId}/package`, { responseType: 'blob' })
-    return response.data
-  },
-  async importQuestionBankPackage(file) {
-    const form = new FormData()
-    form.append('file', file)
-    const response = await apiClient.post<ApiResponse<QuestionBankPackageImportResult>>('/api/admin/question-banks/package/import', form)
     return response.data.data
   },
   async fetchQuestions(params) {

@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { collectConsoleIssues, login } from './helpers'
 
-const CET4_EXAM = '2023年03月英语四级真题第一套'
+const CET4_EXAM = 'CET-4 四级考试平台演示'
 const CET4_AUDIO = '2023-03-cet4-listening.mp3'
 
 test.describe('在线考试', () => {
@@ -24,7 +24,7 @@ test.describe('在线考试', () => {
     expect(consoleIssues).toEqual([])
   })
 
-  test('CET4 在线作答支持写作保存读回、音频题作答、提交待阅卷和人工阅卷锁定', async ({ page }) => {
+  test('在线作答支持写作保存读回、音频题作答、提交待阅卷和人工阅卷锁定', async ({ page }) => {
     const consoleIssues = collectConsoleIssues(page)
     await login(page)
 
@@ -34,7 +34,7 @@ test.describe('在线考试', () => {
     await page.getByRole('button', { name: '开始考试' }).click()
     await expect(page.getByText('答题卡')).toBeVisible()
     await expect(page.getByText('写作').first()).toBeVisible()
-    await expect(page.getByText('recommend it to other members of your book club').first()).toBeVisible()
+    await expect(page.getByText('online learning').first()).toBeVisible()
 
     const writingAnswer = 'This book is worth reading because it gives practical ideas in clear language and can start meaningful discussion in our book club.'
     const writingSaveResponse = page.waitForResponse((response) => {
@@ -42,8 +42,8 @@ test.describe('在线考试', () => {
         && response.request().method() === 'POST'
         && Boolean(response.request().postData()?.includes('practical ideas'))
     })
-    await page.getByPlaceholder('写作答案').fill(writingAnswer)
-    await page.getByPlaceholder('写作答案').blur()
+    await page.getByPlaceholder('请输入答案').fill(writingAnswer)
+    await page.getByPlaceholder('请输入答案').blur()
     await expect((await writingSaveResponse).ok()).toBe(true)
 
     page.once('dialog', (dialog) => {
@@ -51,17 +51,16 @@ test.describe('在线考试', () => {
     })
     await page.reload()
     await expect(page.getByText('答题卡')).toBeVisible()
-    await expect(page.getByPlaceholder('写作答案')).toHaveValue(writingAnswer)
+    await expect(page.getByPlaceholder('请输入答案')).toHaveValue(writingAnswer)
 
-    await page.locator('.answer-card__item').filter({ hasText: /^2$/ }).click()
+    await page.locator('.answer-card__item').filter({ hasText: /^1$/ }).click()
     await expect(page.locator(`audio[src$="${CET4_AUDIO}"]`).first()).toBeVisible()
-    await page.getByText('A. A proposed policy allowing Africans to travel in Africa without a visa.').click()
+    await page.getByText('A. True').click()
     await expect(page.getByText('答案已保存')).toBeVisible()
-    await expect(page.locator('.question-group-context__options').filter({ hasText: 'wildlife' })).toHaveCount(1)
-    await page.locator('.answer-card__item').filter({ hasText: /^26$/ }).click()
-    const wordBankQuestion = page.locator('.question-panel').filter({ hasText: /^26\./ })
-    await wordBankQuestion.locator('.answer-select .el-select__wrapper').click()
-    await page.getByRole('option', { name: 'O. alike' }).click()
+    await page.getByText('A. necessary').click()
+    await page.getByText('A. Reviewing notes').click()
+    await page.getByText('B. Planning study time').click()
+    await page.getByText('D. Practicing with past papers').click()
     await expect(page.getByText('答案已保存')).toBeVisible()
 
     await page.locator('.exam-actions').getByRole('button', { name: '提交试卷' }).click()
@@ -110,7 +109,7 @@ test.describe('在线考试', () => {
     const detailResponse = await page.request.get(`/api/admin/results/${resultId}`, { headers })
     expect(detailResponse.ok()).toBeTruthy()
     const resultDetail = (await detailResponse.json()).data
-    for (const question of resultDetail.questions.filter((item: { type: string; reviewedAt: string | null }) => ['WRITING', 'TRANSLATION'].includes(item.type) && !item.reviewedAt)) {
+    for (const question of resultDetail.questions.filter((item: { type: string; reviewedAt: string | null }) => item.type === 'WRITING' && !item.reviewedAt)) {
       const response = await page.request.post(`/api/admin/results/${resultId}/questions/${question.questionId}/review`, {
         headers,
         data: {

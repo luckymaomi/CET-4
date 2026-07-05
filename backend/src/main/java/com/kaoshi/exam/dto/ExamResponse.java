@@ -16,12 +16,15 @@ public record ExamResponse(
         Integer durationMinutes,
         Boolean timeLimit,
         Integer attemptLimit,
+        String examMode,
         String displayMode,
         String questionOrderMode,
         String openType,
         List<Long> departmentIds,
         List<ExamRuleResponse> rules,
         List<ExamPaperQuestionResponse> paperQuestions,
+        List<ExamMaterialResponse> materials,
+        List<ExamAnswerCardItemResponse> answerCardItems,
         String status
 ) {
 }

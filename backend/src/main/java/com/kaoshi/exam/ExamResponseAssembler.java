@@ -2,9 +2,11 @@ package com.kaoshi.exam;
 
 import com.kaoshi.exam.domain.Exam;
 import com.kaoshi.exam.dto.ExamPaperQuestionResponse;
+import com.kaoshi.exam.dto.ExamMaterialResponse;
 import com.kaoshi.exam.dto.ExamQuestionOptionResponse;
 import com.kaoshi.exam.dto.ExamQuestionResponse;
 import com.kaoshi.exam.dto.ExamResponse;
+import com.kaoshi.exam.dto.ExamAnswerCardItemResponse;
 import com.kaoshi.exam.dto.ExamResultDetailResponse;
 import com.kaoshi.exam.dto.ExamResultQuestionResponse;
 import com.kaoshi.exam.dto.ExamResultResponse;
@@ -42,9 +44,11 @@ final class ExamResponseAssembler {
                 attemptId,
                 exam.getTitle(),
                 exam.getDurationMinutes(),
+                exam.getExamMode(),
                 exam.getDisplayMode(),
                 dateTimeValue(value(attempt, "startedAt")),
                 stringValue(value(attempt, "status")),
+                examMapper.findExamMaterials(exam.getId()).stream().map(this::toMaterialResponse).toList(),
                 examMapper.findAttemptQuestions(attemptId).stream()
                         .map(this::toExamQuestionResponse)
                         .toList()
@@ -56,6 +60,11 @@ final class ExamResponseAssembler {
         List<Map<String, Object>> paperQuestions = examMapper.findDraftQuestions(exam.getId());
         BigDecimal totalScore = calculateRuleScore(rules);
         int questionCount = calculateRuleCount(rules);
+        List<Map<String, Object>> answerCardItems = examMapper.findExamAnswerCardItems(exam.getId());
+        if ("ANSWER_SHEET".equals(exam.getExamMode())) {
+            totalScore = calculateAnswerCardScore(answerCardItems);
+            questionCount = answerCardItems.size();
+        }
         if (!paperQuestions.isEmpty()) {
             totalScore = calculatePaperScore(paperQuestions);
             questionCount = paperQuestions.size();
@@ -78,12 +87,15 @@ final class ExamResponseAssembler {
                 exam.getDurationMinutes(),
                 exam.getTimeLimit(),
                 exam.getAttemptLimit(),
+                exam.getExamMode(),
                 exam.getDisplayMode(),
                 exam.getQuestionOrderMode(),
                 exam.getOpenType(),
                 examMapper.findExamDepartmentIds(exam.getId()),
                 rules.stream().map(this::toRuleResponse).toList(),
                 paperQuestions.stream().map(this::toPaperQuestionResponse).toList(),
+                examMapper.findExamMaterials(exam.getId()).stream().map(this::toMaterialResponse).toList(),
+                answerCardItems.stream().map(this::toAnswerCardItemResponse).toList(),
                 exam.getStatus()
         );
     }
@@ -143,22 +155,18 @@ final class ExamResponseAssembler {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
+    private BigDecimal calculateAnswerCardScore(List<Map<String, Object>> items) {
+        return items.stream()
+                .map(item -> decimalValue(value(item, "score")))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     private ExamQuestionResponse toExamQuestionResponse(Map<String, Object> row) {
         Long attemptQuestionId = longValue(value(row, "id"));
         return new ExamQuestionResponse(
                 longValue(value(row, "sourceQuestionId")),
                 stringValue(value(row, "type")),
                 stringValue(value(row, "stem")),
-                stringValue(value(row, "sectionCode")),
-                stringValue(value(row, "sectionTitle")),
-                intValue(value(row, "sectionSortOrder")),
-                stringValue(value(row, "groupCode")),
-                stringValue(value(row, "groupTitle")),
-                stringValue(value(row, "groupDirection")),
-                stringValue(value(row, "groupMaterial")),
-                intValue(value(row, "groupSortOrder")),
-                stringValue(value(row, "itemLabel")),
-                stringValue(value(row, "itemStem")),
                 decimalValue(value(row, "score")),
                 intValue(value(row, "displayOrder")),
                 splitLabels(stringValue(value(row, "selectedLabels"))),
@@ -191,16 +199,30 @@ final class ExamResponseAssembler {
                 stringValue(value(row, "bankName")),
                 stringValue(value(row, "type")),
                 stringValue(value(row, "stem")),
-                stringValue(value(row, "sectionCode")),
-                stringValue(value(row, "sectionTitle")),
-                intValue(value(row, "sectionSortOrder")),
-                stringValue(value(row, "groupCode")),
-                stringValue(value(row, "groupTitle")),
-                stringValue(value(row, "groupDirection")),
-                stringValue(value(row, "groupMaterial")),
-                intValue(value(row, "groupSortOrder")),
-                stringValue(value(row, "itemLabel")),
-                stringValue(value(row, "itemStem")),
+                decimalValue(value(row, "score")),
+                intValue(value(row, "sortOrder"))
+        );
+    }
+
+    private ExamMaterialResponse toMaterialResponse(Map<String, Object> row) {
+        return new ExamMaterialResponse(
+                longValue(value(row, "id")),
+                stringValue(value(row, "title")),
+                stringValue(value(row, "description")),
+                stringValue(value(row, "fileName")),
+                stringValue(value(row, "fileUrl")),
+                stringValue(value(row, "mediaType")),
+                intValue(value(row, "sortOrder"))
+        );
+    }
+
+    private ExamAnswerCardItemResponse toAnswerCardItemResponse(Map<String, Object> row) {
+        return new ExamAnswerCardItemResponse(
+                longValue(value(row, "id")),
+                intValue(value(row, "questionNo")),
+                stringValue(value(row, "answerType")),
+                splitLabels(stringValue(value(row, "optionLabels"))),
+                splitLabels(stringValue(value(row, "correctLabels"))),
                 decimalValue(value(row, "score")),
                 intValue(value(row, "sortOrder"))
         );
@@ -212,16 +234,6 @@ final class ExamResponseAssembler {
                 longValue(value(row, "questionId")),
                 stringValue(value(row, "type")),
                 stringValue(value(row, "stem")),
-                stringValue(value(row, "sectionCode")),
-                stringValue(value(row, "sectionTitle")),
-                intValue(value(row, "sectionSortOrder")),
-                stringValue(value(row, "groupCode")),
-                stringValue(value(row, "groupTitle")),
-                stringValue(value(row, "groupDirection")),
-                stringValue(value(row, "groupMaterial")),
-                intValue(value(row, "groupSortOrder")),
-                stringValue(value(row, "itemLabel")),
-                stringValue(value(row, "itemStem")),
                 stringValue(value(row, "analysis")),
                 decimalValue(value(row, "score")),
                 decimalValue(value(row, "obtainedScore")),

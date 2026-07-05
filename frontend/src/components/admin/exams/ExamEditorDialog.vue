@@ -20,7 +20,13 @@
         </div>
       </header>
 
+      <section class="publish-section">
+        <h2>试卷模式</h2>
+        <el-segmented v-model="form.examMode" :options="examModeOptions" />
+      </section>
+
       <ExamPaperBuilderSection
+        v-if="form.examMode === 'STRUCTURED'"
         v-model:ruleset="ruleset"
         v-model:paper-questions="paperQuestions"
         :banks="banks"
@@ -40,6 +46,81 @@
         @move-paper-question="(index, offset) => $emit('move-paper-question', index, offset)"
         @remove-paper-question="$emit('remove-paper-question', $event)"
       />
+
+      <section v-else class="publish-section answer-sheet-editor">
+        <div class="section-title-row">
+          <h2>试卷材料</h2>
+          <el-button @click="addMaterial">添加材料</el-button>
+        </div>
+        <el-table :data="materials" border>
+          <el-table-column label="标题" min-width="150">
+            <template #default="{ row }">
+              <el-input v-model.trim="row.title" placeholder="如 听力材料" />
+            </template>
+          </el-table-column>
+          <el-table-column label="地址" min-width="260">
+            <template #default="{ row }">
+              <el-input v-model.trim="row.fileUrl" placeholder="/local-assets/..." />
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="120">
+            <template #default="{ row }">
+              <el-select v-model="row.mediaType">
+                <el-option label="PDF/文件" value="FILE" />
+                <el-option label="图片" value="IMAGE" />
+                <el-option label="音频" value="AUDIO" />
+                <el-option label="视频" value="VIDEO" />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="90">
+            <template #default="{ $index }">
+              <el-button link type="danger" @click="materials.splice($index, 1)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <div class="section-title-row answer-card-title">
+          <h2>答题卡</h2>
+          <el-button @click="addAnswerCardItem">添加题号</el-button>
+        </div>
+        <el-table :data="answerCardItems" border>
+          <el-table-column label="题号" width="90">
+            <template #default="{ row }">
+              <el-input-number v-model="row.questionNo" :min="1" :controls="false" />
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="130">
+            <template #default="{ row }">
+              <el-select v-model="row.answerType" @change="normalizeCardItem(row)">
+                <el-option label="单选" value="SINGLE_CHOICE" />
+                <el-option label="多选" value="MULTIPLE_CHOICE" />
+                <el-option label="写作" value="WRITING" />
+              </el-select>
+            </template>
+          </el-table-column>
+          <el-table-column label="选项" min-width="160">
+            <template #default="{ row }">
+              <el-input :model-value="row.optionLabels.join(',')" :disabled="row.answerType === 'WRITING'" @input="row.optionLabels = labelsFromText(String($event))" />
+            </template>
+          </el-table-column>
+          <el-table-column label="答案" min-width="160">
+            <template #default="{ row }">
+              <el-input :model-value="row.correctLabels.join(',')" :disabled="row.answerType === 'WRITING'" @input="row.correctLabels = labelsFromText(String($event))" />
+            </template>
+          </el-table-column>
+          <el-table-column label="分值" width="120">
+            <template #default="{ row }">
+              <el-input-number v-model="row.score" :min="0" :step="0.5" :controls="false" />
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="90">
+            <template #default="{ $index }">
+              <el-button link type="danger" @click="answerCardItems.splice($index, 1)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </section>
 
       <section class="publish-section">
         <h2>考试配置</h2>
@@ -139,6 +220,8 @@ import ExamPaperBuilderSection from './ExamPaperBuilderSection.vue'
 const visible = defineModel<boolean>('visible', { required: true })
 const ruleset = defineModel<ExamRuleForm[]>('ruleset', { required: true })
 const paperQuestions = defineModel<ExamPaperQuestionForm[]>('paperQuestions', { required: true })
+const materials = defineModel<ExamPayload['materials']>('materials', { required: true })
+const answerCardItems = defineModel<ExamPayload['answerCardItems']>('answerCardItems', { required: true })
 const timeRange = defineModel<[string, string]>('timeRange', { required: true })
 const attemptLimitMode = defineModel<'UNLIMITED' | 'LIMITED'>('attemptLimitMode', { required: true })
 const limitedAttemptCount = defineModel<number | null>('limitedAttemptCount', { required: true })
@@ -185,10 +268,58 @@ const displayModeOptions = [
   { label: '整卷一页', value: 'ALL' },
 ]
 
+const examModeOptions = [
+  { label: '结构化试卷', value: 'STRUCTURED' },
+  { label: '答题卡试卷', value: 'ANSWER_SHEET' },
+]
+
 const questionOrderOptions = [
   { label: '固定顺序', value: 'FIXED' },
   { label: '随机顺序', value: 'RANDOM' },
 ]
+
+function addMaterial() {
+  materials.value.push({
+    title: '试卷材料',
+    description: '',
+    fileName: 'paper.pdf',
+    fileUrl: '',
+    mediaType: 'FILE',
+    sortOrder: (materials.value.length + 1) * 10,
+  })
+}
+
+function addAnswerCardItem() {
+  answerCardItems.value.push({
+    questionNo: answerCardItems.value.length + 1,
+    answerType: 'SINGLE_CHOICE',
+    optionLabels: ['A', 'B', 'C', 'D'],
+    correctLabels: ['A'],
+    score: 5,
+    sortOrder: (answerCardItems.value.length + 1) * 10,
+  })
+}
+
+function normalizeCardItem(row: ExamPayload['answerCardItems'][number]) {
+  if (row.answerType === 'WRITING') {
+    row.optionLabels = []
+    row.correctLabels = []
+    return
+  }
+  if (row.optionLabels.length < 2) {
+    row.optionLabels = ['A', 'B', 'C', 'D']
+  }
+  if (row.correctLabels.length === 0) {
+    row.correctLabels = ['A']
+  }
+}
+
+function labelsFromText(value: string) {
+  return value
+    .split(/[,，\s]+/)
+    .map((label) => label.trim().toUpperCase())
+    .filter(Boolean)
+}
 
 function statusText(status: Exam['status']) {
   return status === 'PUBLISHED' ? '已发布' : status === 'CLOSED' ? '已关闭' : '草稿'
@@ -235,6 +366,23 @@ defineExpose({
   margin: 0;
   font-size: 16px;
   letter-spacing: 0;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.answer-sheet-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.answer-card-title {
+  margin-top: 6px;
 }
 
 .publish-footer {

@@ -8,14 +8,7 @@
 
   <section class="result-review">
     <section v-for="group in resultQuestionGroups" :key="group.id" class="result-review__group">
-      <QuestionGroupContext
-        :section-title="group.sectionTitle"
-        :title="group.title"
-        :direction="group.direction"
-        :material="group.material"
-        :attachments="group.attachments"
-        :shared-options="group.sharedOptions"
-      />
+      <h2>{{ group.title }}</h2>
       <template v-for="question in group.questions" :key="question.questionId">
         <WritingResultQuestion
           v-if="isManualReviewType(question.type)"
@@ -30,7 +23,6 @@
           v-else
           :question="question"
           :index="questionIndex(question.questionId)"
-          :compact-shared-options="group.compactOptionItems"
         />
       </template>
     </section>
@@ -47,9 +39,7 @@ import {
   type ExamResultDetail,
   type ExamResultQuestion,
 } from '@/api/exam-business'
-import QuestionGroupContext from '@/components/exam/QuestionGroupContext.vue'
-import { groupQuestionsForDisplay } from '@/utils/exam-question-groups'
-import { isManualReviewType } from '@/utils/question-types'
+import { isManualReviewType, questionTypeText } from '@/utils/question-types'
 import ChoiceResultQuestion from './result-review/ChoiceResultQuestion.vue'
 import ResultMetricGrid from './result-review/ResultMetricGrid.vue'
 import WritingResultQuestion from './result-review/WritingResultQuestion.vue'
@@ -71,7 +61,7 @@ const reviewForms = reactive<Record<number, { score: number; comment: string }>>
 const writingQuestions = computed(() => props.result.questions.filter((question) => isManualReviewType(question.type)))
 const canReviewWriting = computed(() => props.reviewable && props.result.gradingStatus === 'PENDING_REVIEW')
 const allWritingReviewed = computed(() => writingQuestions.value.length > 0 && writingQuestions.value.every((question) => Boolean(question.reviewedAt)))
-const resultQuestionGroups = computed(() => groupQuestionsForDisplay(props.result.questions))
+const resultQuestionGroups = computed(() => groupQuestionsByType(props.result.questions))
 
 watch(
   () => props.result,
@@ -109,6 +99,17 @@ async function saveReview(question: ExamResultQuestion) {
 
 function questionIndex(questionId: number) {
   return props.result.questions.findIndex((question) => question.questionId === questionId)
+}
+
+function groupQuestionsByType(questions: ExamResultQuestion[]) {
+  const typeOrder: ExamResultQuestion['type'][] = ['SINGLE_CHOICE', 'MULTIPLE_CHOICE', 'WRITING']
+  return typeOrder
+    .map((type) => ({
+      id: type,
+      title: questionTypeText(type),
+      questions: questions.filter((question) => question.type === type),
+    }))
+    .filter((group) => group.questions.length > 0)
 }
 
 async function completeReview() {
@@ -152,6 +153,11 @@ async function completeReview() {
 .result-review__group {
   display: grid;
   gap: 14px;
+}
+
+.result-review__group h2 {
+  margin: 0;
+  font-size: 16px;
 }
 
 @media (max-width: 900px) {

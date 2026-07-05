@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 
 import { collectConsoleIssues, downloadByButton, login } from './helpers'
 
-const CET4_BANK = '2023年03月英语四级第一套 - 听力'
+const CET4_BANK = '四级样例题库'
 const CET4_AUDIO_URL = '/local-assets/cet4/2023-03/set-1/2023-03-cet4-listening.mp3'
 
 async function chooseCategoryAction(page: Page, categoryName: string, actionName: '新建题库' | '编辑分类' | '删除分类') {
@@ -91,11 +91,10 @@ test.describe('题库管理', () => {
     await expect(page.getByText('导入完成：成功')).toBeVisible()
     await page.locator('.tree-pane').getByText(CET4_BANK).click()
     await expect(page.locator('.selected-bank')).toContainText(CET4_BANK)
-    await expect(page.locator('.selected-bank').getByRole('button', { name: '题组结构' })).toBeVisible()
-    await expect(page.locator('.content-editor')).toHaveCount(0)
-    await page.getByPlaceholder('搜索题干或题库').fill('2023年03月英语四级真题第一套')
+    await expect(page.locator('.selected-bank').getByRole('button', { name: '题组结构' })).toHaveCount(0)
+    await page.getByPlaceholder('搜索题干或题库').fill('Excel import listening question')
     await page.locator('.question-pane').getByRole('button', { name: '搜索' }).click()
-    await expect(page.getByText('2023年03月英语四级真题第一套 - 第25题').first()).toBeVisible()
+    await expect(page.getByText('Excel import listening question').first()).toBeVisible()
     await page.locator('.admin-page__header').getByRole('button', { name: '新建试题' }).click()
     const questionDialog = page.getByRole('dialog', { name: '新建试题' })
     await questionDialog.getByLabel('题干').fill(`浏览器创建试题 ${Date.now()}`)
@@ -122,82 +121,6 @@ test.describe('题库管理', () => {
     await expect(page.getByText('试题已创建')).toBeVisible()
     await expect(page.locator('.selected-bank')).toContainText(CET4_BANK)
     await expect(page.locator('.selected-bank')).toContainText(/[1-9]\d* 题/)
-
-    expect(consoleIssues).toEqual([])
-  })
-
-  test('题库管理支持结构节点保存、局部导入和题库包导入导出', async ({ page }) => {
-    const consoleIssues = collectConsoleIssues(page)
-    await login(page)
-    const token = await page.evaluate(() => window.localStorage.getItem('kaoshi.accessToken'))
-    const headers = { Authorization: `Bearer ${token}` }
-    const suffix = Date.now()
-    const bankName = `结构化题库 ${suffix}`
-    const sectionCode = `section-${suffix}`
-    const sectionTitle = `结构大组 ${suffix}`
-    const groupCode = `group-${suffix}`
-    const groupTitle = `结构小组 ${suffix}`
-
-    const bankResponse = await page.request.post('/api/admin/question-banks', {
-      headers,
-      data: {
-        categoryId: 1,
-        name: bankName,
-        description: 'Playwright 结构化题库包夹具',
-        status: 'ACTIVE',
-      },
-    })
-    expect(bankResponse.ok()).toBeTruthy()
-
-    await page.getByRole('menuitem', { name: '题库管理' }).click()
-    await page.getByPlaceholder('搜索题库或分类').fill(bankName)
-    await page.locator('.tree-pane').getByRole('button', { name: '搜索' }).click()
-    await page.locator('.tree-pane').getByText(bankName).click()
-    await expect(page.locator('.selected-bank')).toContainText(bankName)
-
-    const questionTemplate = await downloadByButton(page, '下载模板')
-    await page.locator('.selected-bank').getByRole('button', { name: '题组结构' }).click()
-    const contentEditor = page.locator('.content-editor')
-    await expect(page.getByRole('dialog', { name: '题组结构' })).toBeVisible()
-
-    await contentEditor.getByRole('button', { name: '新建大组' }).click()
-    await contentEditor.getByPlaceholder('如 listening-section-a').fill(sectionCode)
-    await contentEditor.getByLabel('标题').fill(sectionTitle)
-    await contentEditor.getByLabel('说明').fill('结构化大组说明')
-    await contentEditor.getByLabel('材料').fill('结构化大组材料')
-    await contentEditor.getByRole('button', { name: '保存节点' }).click()
-    await expect(page.getByText('内容节点已创建')).toBeVisible()
-    await expect(contentEditor.getByText(sectionTitle)).toBeVisible()
-
-    await contentEditor.getByText(sectionTitle).click()
-    await contentEditor.getByRole('button', { name: '新建小组' }).click()
-    await contentEditor.getByPlaceholder('如 listening-section-a').fill(groupCode)
-    await contentEditor.getByLabel('标题').fill(groupTitle)
-    await contentEditor.getByLabel('说明').fill('结构化小组说明')
-    await contentEditor.getByLabel('材料').fill('结构化小组材料')
-    await contentEditor.getByRole('button', { name: '增加共享选项' }).click()
-    await contentEditor.locator('.shared-options__row').nth(0).getByPlaceholder('共享选项内容').fill('共享正确选项')
-    await contentEditor.getByRole('button', { name: '增加共享选项' }).click()
-    await contentEditor.locator('.shared-options__row').nth(1).getByPlaceholder('共享选项内容').fill('共享干扰选项')
-    await contentEditor.getByPlaceholder('输入附件 URL').fill(CET4_AUDIO_URL)
-    await contentEditor.locator('.node-attachments .el-select').click()
-    await page.getByRole('option', { name: '音频' }).click()
-    await contentEditor.getByRole('button', { name: '添加' }).click()
-    await contentEditor.getByRole('button', { name: '保存节点' }).click()
-    await expect(page.getByText('内容节点已创建')).toBeVisible()
-    await expect(contentEditor.getByText(groupTitle)).toBeVisible()
-
-    await contentEditor.getByText(groupTitle).click()
-    await contentEditor.locator('input[accept=".xlsx"]').setInputFiles(questionTemplate)
-    await expect(page.getByText('导入完成：成功')).toBeVisible()
-    await expect(contentEditor.locator('.content-editor__node').filter({ hasText: groupTitle })).toContainText('4 小题')
-
-    const packagePath = await downloadByButton(page, '导出包')
-    await contentEditor.locator('input[accept=".zip"]').setInputFiles(packagePath)
-    await expect(page.getByText(`题库包已导入：${bankName}-导入-`)).toBeVisible()
-    await expect(page.locator('.selected-bank')).toContainText(`${bankName}-导入-`)
-    await expect(contentEditor.getByText(sectionTitle)).toBeVisible()
-    await expect(contentEditor.getByText(groupTitle)).toBeVisible()
 
     expect(consoleIssues).toEqual([])
   })

@@ -33,10 +33,9 @@ final class QuestionExcelService {
         return ExcelWorkbooks.template(
                 "试题导入模板.xlsx",
                 List.of(importSheet(List.of(
-                        List.of("2023年03月英语四级第一套 - 听力", "单选", "简单", "Excel import listening question", "listen", "speak", "sleep", "walk", "A", "CET4 当前听力题库导入样例。"),
-                        List.of("2023年03月英语四级第一套 - 阅读", "多选", "简单", "Which sections are included in CET4 set 1?", "Writing", "Listening", "Reading", "Physics experiment", "ABC", "示例多选题使用连续字母，不使用逗号。"),
-                        List.of("2023年03月英语四级第一套 - 写作", "写作", "困难", "Write a recommendation for members of your book club.", "", "", "", "", "", "写作题不填写选项和正确答案，可在解析中填写写作要求或参考思路。"),
-                        List.of("2023年03月英语四级第一套 - 翻译", "翻译", "困难", "Translate the following Chinese paragraph into English.", "", "", "", "", "", "翻译题不填写选项和正确答案，由人工阅卷。")
+                        List.of("四级样例题库", "单选", "简单", "Excel import listening question", "listen", "speak", "sleep", "walk", "A", "CET4 当前听力题库导入样例。"),
+                        List.of("四级样例题库", "多选", "简单", "Which sections are included in CET4 set 1?", "Writing", "Listening", "Reading", "Physics experiment", "ABC", "示例多选题使用连续字母，不使用逗号。"),
+                        List.of("四级样例题库", "写作", "困难", "Write a recommendation for members of your book club.", "", "", "", "", "", "写作题不填写选项和正确答案，可在解析中填写写作要求或参考思路。")
                 )), dictionarySheet())
         );
     }
@@ -86,9 +85,9 @@ final class QuestionExcelService {
                 List.of("字段", "可用值"),
                 List.of(
                         List.of("题库名称", String.join("、", questionMapper.findActiveBankNames())),
-                        List.of("题型", "单选、 多选、 写作、 翻译"),
+                        List.of("题型", "单选、 多选、 写作"),
                         List.of("难度", "简单、 困难"),
-                        List.of("正确答案", "单选填写 A/B/C/D；多选填写 AC/BCD，不使用逗号；写作和翻译题留空")
+                        List.of("正确答案", "单选填写 A/B/C/D；多选填写 AC/BCD，不使用逗号；写作题留空")
                 )
         );
     }
@@ -133,19 +132,8 @@ final class QuestionExcelService {
         }
         return new QuestionSaveRequest(
                 bankId,
-                null,
                 type,
                 stem,
-                null,
-                null,
-                0,
-                null,
-                null,
-                null,
-                null,
-                0,
-                null,
-                null,
                 ExcelWorkbooks.text(row, 9).trim(),
                 difficulty,
                 "ACTIVE",
@@ -167,15 +155,6 @@ final class QuestionExcelService {
         }
         if ("写作".equals(value) || "写作题".equals(value) || QuestionType.WRITING.code().equals(value)) {
             return QuestionType.WRITING.code();
-        }
-        if ("选词填空".equals(value) || "选词填空题".equals(value) || QuestionType.WORD_BANK.code().equals(value)) {
-            return QuestionType.WORD_BANK.code();
-        }
-        if ("匹配".equals(value) || "匹配题".equals(value) || QuestionType.MATCHING.code().equals(value)) {
-            return QuestionType.MATCHING.code();
-        }
-        if ("翻译".equals(value) || "翻译题".equals(value) || QuestionType.TRANSLATION.code().equals(value)) {
-            return QuestionType.TRANSLATION.code();
         }
         throw new BusinessException(ErrorCode.VALIDATION_FAILED, "试题类型不支持：" + value);
     }

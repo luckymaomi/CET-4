@@ -6,6 +6,8 @@ import com.kaoshi.exam.domain.Exam;
 import com.kaoshi.exam.dto.ExamPaperQuestionRequest;
 import com.kaoshi.exam.dto.ExamRuleRequest;
 import com.kaoshi.exam.dto.ExamSaveRequest;
+import com.kaoshi.exam.dto.ExamMaterialRequest;
+import com.kaoshi.exam.dto.ExamAnswerCardItemRequest;
 import com.kaoshi.exam.mapper.ExamMapper;
 import com.kaoshi.question.QuestionType;
 
@@ -19,6 +21,8 @@ import java.util.Set;
 import static com.kaoshi.exam.ExamRowValues.decimalValue;
 import static com.kaoshi.exam.ExamRowValues.intValue;
 import static com.kaoshi.exam.ExamRowValues.longValue;
+import static com.kaoshi.exam.ExamRowValues.normalizedLabels;
+import static com.kaoshi.exam.ExamRowValues.splitLabels;
 import static com.kaoshi.exam.ExamRowValues.stringValue;
 import static com.kaoshi.exam.ExamRowValues.value;
 
@@ -59,10 +63,6 @@ final class ExamPaperWorkflow {
         examMapper.deletePublishedOptions(examId);
         examMapper.deletePublishedAnswerLabels(examId);
         examMapper.deletePublishedQuestions(examId);
-        examMapper.deletePublishedNodeAttachments(examId);
-        examMapper.deletePublishedNodeOptions(examId);
-        examMapper.deletePublishedChildNodes(examId);
-        examMapper.deletePublishedRootNodes(examId);
     }
 
     void validateDraft(ExamSaveRequest request) {
@@ -75,11 +75,18 @@ final class ExamPaperWorkflow {
         if (!List.of("PUBLIC", "DEPARTMENT").contains(request.openType())) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "开放范围不合法");
         }
+        if (!List.of("STRUCTURED", "ANSWER_SHEET").contains(request.examMode())) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "考试模式不合法");
+        }
         if (Boolean.TRUE.equals(request.timeLimit()) && !request.endTime().isAfter(request.startTime())) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "考试结束时间必须晚于开始时间");
         }
         validateDepartments(request.departmentIds());
-        validateRules(request.rules());
+        if ("ANSWER_SHEET".equals(request.examMode())) {
+            validateAnswerSheet(request);
+        } else {
+            validateRules(request.rules());
+        }
     }
 
     void validatePublish(Exam exam, List<Map<String, Object>> rules) {
@@ -88,6 +95,22 @@ final class ExamPaperWorkflow {
         }
         if (Boolean.TRUE.equals(exam.getTimeLimit()) && !exam.getEndTime().isAfter(exam.getStartTime())) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "考试结束时间必须晚于开始时间");
+        }
+        if ("ANSWER_SHEET".equals(exam.getExamMode())) {
+            List<Map<String, Object>> items = examMapper.findExamAnswerCardItems(exam.getId());
+            if (items.isEmpty()) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "答题卡试卷必须配置答题卡");
+            }
+            BigDecimal totalScore = items.stream()
+                    .map(item -> decimalValue(value(item, "score")))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (totalScore.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "发布考试至少需要有效分值");
+            }
+            if (exam.getQualifyScore().compareTo(totalScore) > 0) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "及格分不能超过试卷总分");
+            }
+            return;
         }
         for (Map<String, Object> rule : rules) {
             for (QuestionType type : QuestionType.ruleOrder()) {
@@ -120,6 +143,7 @@ final class ExamPaperWorkflow {
         exam.setDurationMinutes(request.durationMinutes());
         exam.setTimeLimit(request.timeLimit());
         exam.setAttemptLimit(request.attemptLimit());
+        exam.setExamMode(request.examMode());
         exam.setDisplayMode(request.displayMode());
         exam.setQuestionOrderMode(request.questionOrderMode());
         exam.setOpenType(request.openType());
@@ -158,16 +182,46 @@ final class ExamPaperWorkflow {
         }
     }
 
+    void replaceAnswerSheet(Long examId, List<ExamMaterialRequest> materials, List<ExamAnswerCardItemRequest> items) {
+        examMapper.deleteExamMaterials(examId);
+        examMapper.deleteExamAnswerCardItems(examId);
+        int materialSort = 10;
+        for (ExamMaterialRequest material : materials == null ? List.<ExamMaterialRequest>of() : materials) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("examId", examId);
+            row.put("title", material.title());
+            row.put("description", material.description());
+            row.put("fileName", material.fileName());
+            row.put("fileUrl", material.fileUrl());
+            row.put("mediaType", material.mediaType());
+            row.put("sortOrder", material.sortOrder() == null ? materialSort : material.sortOrder());
+            examMapper.insertExamMaterial(row);
+            materialSort += 10;
+        }
+        int itemSort = 10;
+        for (ExamAnswerCardItemRequest item : items == null ? List.<ExamAnswerCardItemRequest>of() : items) {
+            Map<String, Object> row = new HashMap<>();
+            row.put("examId", examId);
+            row.put("questionNo", item.questionNo());
+            row.put("answerType", item.answerType());
+            row.put("optionLabels", String.join(",", normalizedLabels(item.optionLabels())));
+            row.put("correctLabels", String.join(",", normalizedLabels(item.correctLabels())));
+            row.put("score", item.score());
+            row.put("sortOrder", item.sortOrder() == null ? itemSort : item.sortOrder());
+            examMapper.insertExamAnswerCardItem(row);
+            itemSort += 10;
+        }
+    }
+
     void replaceDraftQuestions(Long examId, ExamSaveRequest request) {
         examMapper.deleteDraftAttachments(examId);
         examMapper.deleteDraftOptions(examId);
         examMapper.deleteDraftAnswerLabels(examId);
         examMapper.deleteDraftQuestions(examId);
-        examMapper.deleteDraftNodeAttachments(examId);
-        examMapper.deleteDraftNodeOptions(examId);
-        examMapper.deleteDraftChildNodes(examId);
-        examMapper.deleteDraftRootNodes(examId);
         List<ExamPaperQuestionRequest> paperQuestions = request.paperQuestions();
+        if ("ANSWER_SHEET".equals(request.examMode())) {
+            return;
+        }
         if (paperQuestions != null && !paperQuestions.isEmpty()) {
             replaceDraftQuestionsFromRequest(examId, paperQuestions);
             return;
@@ -209,20 +263,14 @@ final class ExamPaperWorkflow {
         examMapper.deletePublishedOptions(examId);
         examMapper.deletePublishedAnswerLabels(examId);
         examMapper.deletePublishedQuestions(examId);
-        examMapper.deletePublishedNodeAttachments(examId);
-        examMapper.deletePublishedNodeOptions(examId);
-        examMapper.deletePublishedChildNodes(examId);
-        examMapper.deletePublishedRootNodes(examId);
         for (Map<String, Object> source : examMapper.findDraftQuestionsForPublish(examId)) {
             Map<String, Object> question = new HashMap<>();
             question.put("examId", examId);
-            question.put("publishedNodeId", copyPublishedNodeFromDraft(examId, nullableLong(value(source, "draftNodeId"))));
             question.put("sourceQuestionId", longValue(value(source, "questionId")));
             question.put("bankId", longValue(value(source, "bankId")));
             question.put("bankName", stringValue(value(source, "bankName")));
             question.put("type", stringValue(value(source, "type")));
             question.put("stem", stringValue(value(source, "stem")));
-            putItemMetadata(question, source);
             question.put("analysis", stringValue(value(source, "analysis")));
             question.put("score", decimalValue(value(source, "score")));
             question.put("sortOrder", intValue(value(source, "sortOrder")));
@@ -231,6 +279,49 @@ final class ExamPaperWorkflow {
             examMapper.copyPublishedOptions(publishedQuestionId, longValue(value(source, "draftQuestionId")));
             examMapper.copyPublishedAnswerLabels(publishedQuestionId, longValue(value(source, "draftQuestionId")));
             examMapper.copyPublishedAttachments(publishedQuestionId, longValue(value(source, "draftQuestionId")));
+        }
+    }
+
+    void rebuildAnswerSheetPublishedSnapshot(Long examId) {
+        examMapper.deletePublishedAttachments(examId);
+        examMapper.deletePublishedOptions(examId);
+        examMapper.deletePublishedAnswerLabels(examId);
+        examMapper.deletePublishedQuestions(examId);
+        for (Map<String, Object> item : examMapper.findExamAnswerCardItems(examId)) {
+            Map<String, Object> question = new HashMap<>();
+            question.put("examId", examId);
+            question.put("sourceQuestionId", 0L - longValue(value(item, "questionNo")));
+            question.put("bankId", 0L);
+            question.put("bankName", "答题卡");
+            question.put("type", stringValue(value(item, "answerType")));
+            question.put("stem", "第 " + intValue(value(item, "questionNo")) + " 题");
+            question.put("analysis", null);
+            question.put("score", decimalValue(value(item, "score")));
+            question.put("sortOrder", intValue(value(item, "sortOrder")));
+            examMapper.insertPublishedQuestion(question);
+            Long publishedQuestionId = longValue(value(question, "id"));
+            List<String> labels = splitLabels(stringValue(value(item, "optionLabels")));
+            List<String> correctLabels = splitLabels(stringValue(value(item, "correctLabels")));
+            int sort = 10;
+            for (String label : labels) {
+                Map<String, Object> option = new HashMap<>();
+                option.put("publishedQuestionId", publishedQuestionId);
+                option.put("optionLabel", label);
+                option.put("content", label);
+                option.put("correct", correctLabels.contains(label));
+                option.put("sortOrder", sort);
+                examMapper.insertPublishedOption(option);
+                sort += 10;
+            }
+            sort = 10;
+            for (String label : correctLabels) {
+                Map<String, Object> answer = new HashMap<>();
+                answer.put("publishedQuestionId", publishedQuestionId);
+                answer.put("answerLabel", label);
+                answer.put("sortOrder", sort);
+                examMapper.insertPublishedAnswerLabel(answer);
+                sort += 10;
+            }
         }
     }
 
@@ -297,6 +388,42 @@ final class ExamPaperWorkflow {
         }
     }
 
+    private void validateAnswerSheet(ExamSaveRequest request) {
+        if (request.materials() == null || request.materials().isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "答题卡试卷必须上传或引用试卷材料");
+        }
+        if (request.answerCardItems() == null || request.answerCardItems().isEmpty()) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "答题卡试卷必须配置答题卡");
+        }
+        Set<Integer> questionNos = new HashSet<>();
+        for (ExamAnswerCardItemRequest item : request.answerCardItems()) {
+            if (!questionNos.add(item.questionNo())) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "答题卡题号不能重复");
+            }
+            QuestionType type = QuestionType.require(item.answerType());
+            if (type.optionBased()) {
+                if (item.optionLabels() == null || item.optionLabels().size() < 2) {
+                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "选择题至少需要两个选项");
+                }
+                validateAnswerCardLabels(type, normalizedLabels(item.optionLabels()), normalizedLabels(item.correctLabels()));
+            }
+        }
+    }
+
+    private void validateAnswerCardLabels(QuestionType type, List<String> optionLabels, List<String> correctLabels) {
+        if (type.singleAnswer() && correctLabels.size() != 1) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "单选题必须且只能有一个正确答案");
+        }
+        if (QuestionType.MULTIPLE_CHOICE == type && correctLabels.size() < 2) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "多选题至少需要两个正确答案");
+        }
+        for (String label : correctLabels) {
+            if (!optionLabels.contains(label)) {
+                throw new BusinessException(ErrorCode.VALIDATION_FAILED, "正确答案引用了不存在的选项：" + label);
+            }
+        }
+    }
+
     private void replaceDraftQuestionsFromRequest(Long examId, List<ExamPaperQuestionRequest> paperQuestions) {
         Set<Long> questionIds = new HashSet<>();
         int sort = 10;
@@ -353,12 +480,10 @@ final class ExamPaperWorkflow {
         Map<String, Object> question = new HashMap<>();
         question.put("examId", examId);
         question.put("sourceQuestionId", sourceQuestionId);
-        question.put("draftNodeId", copyDraftNodeFromSource(examId, nullableLong(value(source, "sourceNodeId"))));
         question.put("bankId", longValue(value(source, "bankId")));
         question.put("bankName", stringValue(value(source, "bankName")));
         question.put("type", stringValue(value(source, "type")));
         question.put("stem", stringValue(value(source, "stem")));
-        putItemMetadata(question, source);
         question.put("analysis", stringValue(value(source, "analysis")));
         question.put("score", score);
         question.put("sortOrder", sortOrder);
@@ -369,63 +494,4 @@ final class ExamPaperWorkflow {
         examMapper.copyDraftAttachmentsFromSource(draftQuestionId, sourceQuestionId);
     }
 
-    private Long copyDraftNodeFromSource(Long examId, Long sourceNodeId) {
-        if (sourceNodeId == null) {
-            return null;
-        }
-        Map<String, Object> existing = examMapper.findDraftNodeBySource(examId, sourceNodeId);
-        if (existing != null) {
-            return longValue(value(existing, "id"));
-        }
-        Map<String, Object> source = examMapper.findSourceNode(sourceNodeId);
-        Long parentId = copyDraftNodeFromSource(examId, nullableLong(value(source, "parentId")));
-        Map<String, Object> node = new HashMap<>();
-        putNodeSnapshot(node, examId, sourceNodeId, parentId, source);
-        examMapper.insertDraftNode(node);
-        Long draftNodeId = longValue(value(node, "id"));
-        examMapper.copyDraftNodeOptionsFromSource(draftNodeId, sourceNodeId);
-        examMapper.copyDraftNodeAttachmentsFromSource(draftNodeId, sourceNodeId);
-        return draftNodeId;
-    }
-
-    private Long copyPublishedNodeFromDraft(Long examId, Long draftNodeId) {
-        if (draftNodeId == null) {
-            return null;
-        }
-        Map<String, Object> draft = examMapper.findDraftNode(draftNodeId);
-        Long sourceNodeId = longValue(value(draft, "sourceNodeId"));
-        Map<String, Object> existing = examMapper.findPublishedNodeBySource(examId, sourceNodeId);
-        if (existing != null) {
-            return longValue(value(existing, "id"));
-        }
-        Long parentId = copyPublishedNodeFromDraft(examId, nullableLong(value(draft, "parentId")));
-        Map<String, Object> node = new HashMap<>();
-        putNodeSnapshot(node, examId, sourceNodeId, parentId, draft);
-        examMapper.insertPublishedNode(node);
-        Long publishedNodeId = longValue(value(node, "id"));
-        examMapper.copyPublishedNodeOptions(publishedNodeId, draftNodeId);
-        examMapper.copyPublishedNodeAttachments(publishedNodeId, draftNodeId);
-        return publishedNodeId;
-    }
-
-    private void putNodeSnapshot(Map<String, Object> target, Long ownerId, Long sourceNodeId, Long parentId, Map<String, Object> source) {
-        target.put("examId", ownerId);
-        target.put("sourceNodeId", sourceNodeId);
-        target.put("parentId", parentId);
-        target.put("nodeCode", stringValue(value(source, "nodeCode")));
-        target.put("nodeType", stringValue(value(source, "nodeType")));
-        target.put("title", stringValue(value(source, "title")));
-        target.put("direction", stringValue(value(source, "direction")));
-        target.put("material", stringValue(value(source, "material")));
-        target.put("sortOrder", intValue(value(source, "sortOrder")));
-    }
-
-    private void putItemMetadata(Map<String, Object> target, Map<String, Object> source) {
-        target.put("itemLabel", stringValue(value(source, "itemLabel")));
-        target.put("itemStem", stringValue(value(source, "itemStem")));
-    }
-
-    private Long nullableLong(Object value) {
-        return value == null ? null : longValue(value);
-    }
 }

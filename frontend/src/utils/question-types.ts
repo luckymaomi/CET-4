@@ -1,4 +1,4 @@
-export type QuestionTypeCode = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'WORD_BANK' | 'MATCHING' | 'WRITING' | 'TRANSLATION'
+export type QuestionTypeCode = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE' | 'WRITING'
 
 export interface QuestionTypeMeta {
   code: QuestionTypeCode
@@ -12,10 +12,7 @@ export interface QuestionTypeMeta {
 export const questionTypes: QuestionTypeMeta[] = [
   { code: 'SINGLE_CHOICE', label: '单选题', shortLabel: '单选', optionBased: true, multiple: false, manualReview: false },
   { code: 'MULTIPLE_CHOICE', label: '多选题', shortLabel: '多选', optionBased: true, multiple: true, manualReview: false },
-  { code: 'WORD_BANK', label: '选词填空题', shortLabel: '选词填空', optionBased: true, multiple: false, manualReview: false },
-  { code: 'MATCHING', label: '匹配题', shortLabel: '匹配', optionBased: true, multiple: false, manualReview: false },
   { code: 'WRITING', label: '写作题', shortLabel: '写作', optionBased: false, multiple: false, manualReview: true },
-  { code: 'TRANSLATION', label: '翻译题', shortLabel: '翻译', optionBased: false, multiple: false, manualReview: true },
 ]
 
 export function questionTypeMeta(type: QuestionTypeCode) {

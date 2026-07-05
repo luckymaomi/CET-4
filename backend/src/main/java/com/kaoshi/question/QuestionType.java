@@ -9,10 +9,7 @@ import java.util.List;
 public enum QuestionType {
     SINGLE_CHOICE("SINGLE_CHOICE", "单选题", true, true, false),
     MULTIPLE_CHOICE("MULTIPLE_CHOICE", "多选题", true, true, false),
-    WORD_BANK("WORD_BANK", "选词填空题", true, true, false),
-    MATCHING("MATCHING", "匹配题", true, true, false),
-    WRITING("WRITING", "写作题", false, false, true),
-    TRANSLATION("TRANSLATION", "翻译题", false, false, true);
+    WRITING("WRITING", "写作题", false, false, true);
 
     private final String code;
     private final String label;
@@ -49,7 +46,7 @@ public enum QuestionType {
     }
 
     public boolean singleAnswer() {
-        return this == SINGLE_CHOICE || this == WORD_BANK || this == MATCHING;
+        return this == SINGLE_CHOICE;
     }
 
     public static QuestionType require(String code) {

@@ -29,7 +29,6 @@ export function useQuestionEditor(
   firstBankId: () => number,
   bankIdByCategory: (categoryId: number | null) => number | undefined,
   afterQuestionChanged: (bankId?: number) => Promise<void>,
-  afterQuestionListLoaded: () => Promise<void>,
 ) {
   const questions = ref<Question[]>([])
   const total = ref(0)
@@ -61,7 +60,6 @@ export function useQuestionEditor(
       })
       questions.value = result.records
       total.value = result.total
-      await afterQuestionListLoaded()
     } finally {
       loading.value = false
     }
@@ -150,15 +148,6 @@ export function useQuestionEditor(
     return false
   }
 
-  async function uploadNodeAttachment(file: UploadRawFile) {
-    uploadingAttachment.value = true
-    try {
-      return await uploadFile(file)
-    } finally {
-      uploadingAttachment.value = false
-    }
-  }
-
   function addUrlAttachment() {
     if (!attachmentUrl.value) {
       ElMessage.error('请输入附件 URL')
@@ -215,7 +204,6 @@ export function useQuestionEditor(
     downloadTemplate,
     handleImport,
     handleAttachmentUpload,
-    uploadNodeAttachment,
     addUrlAttachment,
     removeAttachment,
     moveAttachment,

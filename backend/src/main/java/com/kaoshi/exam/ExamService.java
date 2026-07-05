@@ -67,6 +67,7 @@ public class ExamService {
         examMapper.insertExam(exam);
         paperWorkflow.replaceExamDepartments(exam.getId(), request.departmentIds());
         paperWorkflow.replaceRules(exam.getId(), request.rules());
+        paperWorkflow.replaceAnswerSheet(exam.getId(), request.materials(), request.answerCardItems());
         paperWorkflow.replaceDraftQuestions(exam.getId(), request);
         return detail(exam.getId());
     }
@@ -81,6 +82,7 @@ public class ExamService {
         examMapper.updateExam(exam);
         paperWorkflow.replaceExamDepartments(id, request.departmentIds());
         paperWorkflow.replaceRules(id, request.rules());
+        paperWorkflow.replaceAnswerSheet(id, request.materials(), request.answerCardItems());
         paperWorkflow.replaceDraftQuestions(id, request);
         return detail(id);
     }
@@ -90,7 +92,11 @@ public class ExamService {
         Exam exam = findExam(id);
         paperWorkflow.ensureExamPublishable(exam);
         paperWorkflow.validatePublish(exam, examMapper.findExamRules(id));
-        paperWorkflow.rebuildPublishedSnapshot(id);
+        if ("ANSWER_SHEET".equals(exam.getExamMode())) {
+            paperWorkflow.rebuildAnswerSheetPublishedSnapshot(id);
+        } else {
+            paperWorkflow.rebuildPublishedSnapshot(id);
+        }
         examMapper.updateExamStatus(id, "PUBLISHED");
         return detail(id);
     }
@@ -113,10 +119,8 @@ public class ExamService {
         examMapper.deleteDraftOptions(id);
         examMapper.deleteDraftAnswerLabels(id);
         examMapper.deleteDraftQuestions(id);
-        examMapper.deleteDraftNodeAttachments(id);
-        examMapper.deleteDraftNodeOptions(id);
-        examMapper.deleteDraftChildNodes(id);
-        examMapper.deleteDraftRootNodes(id);
+        examMapper.deleteExamMaterials(id);
+        examMapper.deleteExamAnswerCardItems(id);
         examMapper.deleteExamRules(id);
         examMapper.deleteExamDepartments(id);
         examMapper.deleteExam(id);
@@ -134,6 +138,7 @@ public class ExamService {
         target.setDurationMinutes(source.getDurationMinutes());
         target.setTimeLimit(source.getTimeLimit());
         target.setAttemptLimit(source.getAttemptLimit());
+        target.setExamMode(source.getExamMode());
         target.setDisplayMode(source.getDisplayMode());
         target.setQuestionOrderMode(source.getQuestionOrderMode());
         target.setOpenType(source.getOpenType());
@@ -141,8 +146,22 @@ public class ExamService {
         examMapper.insertExam(target);
         paperWorkflow.replaceExamDepartments(target.getId(), examMapper.findExamDepartmentIds(id));
         paperWorkflow.copyRules(id, target.getId());
+        copyAnswerSheet(id, target.getId());
         paperWorkflow.copyPaperQuestions(id, target.getId());
         return detail(target.getId());
+    }
+
+    private void copyAnswerSheet(Long sourceExamId, Long targetExamId) {
+        for (Map<String, Object> material : examMapper.findExamMaterials(sourceExamId)) {
+            Map<String, Object> row = new HashMap<>(material);
+            row.put("examId", targetExamId);
+            examMapper.insertExamMaterial(row);
+        }
+        for (Map<String, Object> item : examMapper.findExamAnswerCardItems(sourceExamId)) {
+            Map<String, Object> row = new HashMap<>(item);
+            row.put("examId", targetExamId);
+            examMapper.insertExamAnswerCardItem(row);
+        }
     }
 
     public ResponseEntity<byte[]> download(Long id) {

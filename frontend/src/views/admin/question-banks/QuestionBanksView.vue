@@ -54,32 +54,8 @@
         @edit-category="openEditCategoryDialog"
         @create-question="openCreateQuestionDialog"
         @edit-question="openEditQuestionDialog"
-        @manage-structure="openStructureDrawer"
       />
     </div>
-
-    <el-drawer
-      v-model="structureDrawerVisible"
-      title="题组结构"
-      size="760px"
-      class="structure-drawer"
-      destroy-on-close
-    >
-      <QuestionContentEditorPane
-        :selected-bank="selectedBank"
-        :tree="contentTree"
-        :loading="contentTreeLoading"
-        :saving="nodeSaving"
-        :importing="groupImporting || packageImporting"
-        :uploading-attachment="uploadingAttachment"
-        :upload-attachment="uploadNodeAttachment"
-        @save-node="saveContentNode"
-        @delete-node="deleteContentNode"
-        @import-group="importGroupQuestions"
-        @export-package="exportSelectedBankPackage"
-        @import-package="importBankPackage"
-      />
-    </el-drawer>
 
     <QuestionCategoryDialog
       ref="categoryFormRef"
@@ -133,10 +109,8 @@ import QuestionBankDialog from '@/components/admin/question-banks/QuestionBankDi
 import QuestionListPane from '@/components/admin/question-banks/QuestionListPane.vue'
 import QuestionBankTreePane from '@/components/admin/question-banks/QuestionBankTreePane.vue'
 import QuestionCategoryDialog from '@/components/admin/question-banks/QuestionCategoryDialog.vue'
-import QuestionContentEditorPane from '@/components/admin/question-banks/QuestionContentEditorPane.vue'
 import QuestionEditorDialog from '@/components/admin/question-banks/QuestionEditorDialog.vue'
 import { useQuestionBankCatalog } from '@/composables/useQuestionBankCatalog'
-import { useQuestionContentActions } from '@/composables/useQuestionContentActions'
 import { useQuestionEditor } from '@/composables/useQuestionEditor'
 
 const pageTitle = '题库管理'
@@ -144,7 +118,6 @@ const pageTitle = '题库管理'
 const questionFormRef = ref<{ validate: () => Promise<boolean> | undefined }>()
 const bankFormRef = ref<{ validate: () => Promise<boolean> | undefined }>()
 const categoryFormRef = ref<{ validate: () => Promise<boolean> | undefined }>()
-const structureDrawerVisible = ref(false)
 
 async function refreshFirstQuestionPage() {
   await questionEditor.loadFirstPage()
@@ -160,22 +133,6 @@ const questionEditor = useQuestionEditor(
     await catalog.loadBanks(bankId || catalog.selectedBankId.value)
     await questionEditor.loadQuestions()
   },
-  async () => {
-    if (structureDrawerVisible.value) {
-      await contentActions.loadContentTree()
-    }
-  },
-)
-const contentActions = useQuestionContentActions(
-  catalog.selectedBankId,
-  catalog.selectedBank,
-  catalog.setSelectedBank,
-  (result) => {
-    questionEditor.importResult.value = result
-  },
-  catalog.loadBanks,
-  catalog.loadCategories,
-  questionEditor.loadQuestions,
 )
 
 const {
@@ -233,24 +190,10 @@ const {
   downloadTemplate,
   handleImport,
   handleAttachmentUpload,
-  uploadNodeAttachment,
   addUrlAttachment,
   removeAttachment,
   moveAttachment,
 } = questionEditor
-
-const {
-  contentTree,
-  contentTreeLoading,
-  nodeSaving,
-  groupImporting,
-  packageImporting,
-  saveContentNode,
-  deleteContentNode,
-  importGroupQuestions,
-  exportSelectedBankPackage,
-  importBankPackage,
-} = contentActions
 
 onMounted(async () => {
   await Promise.all([loadCategories(), loadBanks()])
@@ -267,11 +210,6 @@ function submitBank() {
 
 function submitQuestion() {
   return questionEditor.submitQuestion(() => questionFormRef.value?.validate())
-}
-
-async function openStructureDrawer() {
-  structureDrawerVisible.value = true
-  await contentActions.loadContentTree()
 }
 </script>
 
@@ -291,15 +229,6 @@ async function openStructureDrawer() {
 
 .question-workbench :deep(.question-pane) {
   align-self: stretch;
-}
-
-:global(.structure-drawer) {
-  max-width: min(760px, 100vw);
-}
-
-:global(.structure-drawer .el-drawer__body) {
-  min-width: 0;
-  padding: 16px;
 }
 
 .import-errors {

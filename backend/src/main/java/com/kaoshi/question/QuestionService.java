@@ -19,9 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashSet;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.LinkedHashSet;
 
@@ -100,9 +98,6 @@ public class QuestionService {
         if (questionMapper.countBankById(request.bankId()) == 0) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题库不存在");
         }
-        if (request.nodeId() != null && questionMapper.countNodeByIdAndBankAndType(request.nodeId(), request.bankId(), "GROUP") == 0) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED, "题目必须绑定到当前题库下的题组节点");
-        }
         QuestionType type = QuestionType.require(request.type());
         if (!List.of("EASY", "HARD").contains(request.difficulty())) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "试题难度不合法");
@@ -118,16 +113,6 @@ public class QuestionService {
             return;
         }
         List<String> correctLabels = correctLabels(request);
-        if (options.isEmpty() && request.nodeId() != null) {
-            validateCorrectLabels(type, correctLabels);
-            Set<String> sharedLabels = new HashSet<>(questionMapper.findNodeOptionLabels(request.nodeId()));
-            for (String label : correctLabels) {
-                if (!sharedLabels.contains(label)) {
-                    throw new BusinessException(ErrorCode.VALIDATION_FAILED, "正确答案引用了不存在的共享选项：" + label);
-                }
-            }
-            return;
-        }
         if (options.size() < 2) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED, "试题至少需要两个选项");
         }
@@ -160,80 +145,11 @@ public class QuestionService {
 
     private void fillQuestion(Question question, QuestionSaveRequest request) {
         question.setBankId(request.bankId());
-        question.setNodeId(request.nodeId() == null ? ensureQuestionNode(request) : request.nodeId());
         question.setType(request.type());
         question.setStem(request.stem());
-        question.setSectionCode(request.sectionCode());
-        question.setSectionTitle(request.sectionTitle());
-        question.setSectionSortOrder(request.sectionSortOrder() == null ? 0 : request.sectionSortOrder());
-        question.setGroupCode(request.groupCode());
-        question.setGroupTitle(request.groupTitle());
-        question.setGroupDirection(request.groupDirection());
-        question.setGroupMaterial(request.groupMaterial());
-        question.setGroupSortOrder(request.groupSortOrder() == null ? 0 : request.groupSortOrder());
-        question.setItemLabel(request.itemLabel());
-        question.setItemStem(request.itemStem());
         question.setAnalysis(request.analysis());
         question.setDifficulty(request.difficulty());
         question.setStatus(request.status());
-    }
-
-    private Long ensureQuestionNode(QuestionSaveRequest request) {
-        if (request.groupCode() == null || request.groupCode().isBlank()) {
-            return null;
-        }
-        Long sectionId = null;
-        if (request.sectionCode() != null && !request.sectionCode().isBlank()) {
-            sectionId = upsertNode(
-                    request.bankId(),
-                    null,
-                    request.sectionCode(),
-                    "SECTION",
-                    request.sectionTitle(),
-                    null,
-                    null,
-                    request.sectionSortOrder() == null ? 0 : request.sectionSortOrder()
-            );
-        }
-        return upsertNode(
-                request.bankId(),
-                sectionId,
-                request.groupCode(),
-                "GROUP",
-                request.groupTitle(),
-                request.groupDirection(),
-                request.groupMaterial(),
-                request.groupSortOrder() == null ? 0 : request.groupSortOrder()
-        );
-    }
-
-    private Long upsertNode(
-            Long bankId,
-            Long parentId,
-            String code,
-            String type,
-            String title,
-            String direction,
-            String material,
-            int sortOrder
-    ) {
-        Long nodeId = questionMapper.findNodeId(bankId, code, type);
-        Map<String, Object> node = new HashMap<>();
-        node.put("id", nodeId);
-        node.put("bankId", bankId);
-        node.put("parentId", parentId);
-        node.put("nodeCode", code);
-        node.put("nodeType", type);
-        node.put("title", title);
-        node.put("direction", direction);
-        node.put("material", material);
-        node.put("sortOrder", sortOrder);
-        if (nodeId == null) {
-            questionMapper.insertNode(node);
-            return ((Number) node.get("id")).longValue();
-        }
-        questionMapper.updateNode(node);
-        return nodeId;
     }
 
     private void replaceOptions(Long questionId, List<QuestionOptionRequest> options) {

@@ -41,7 +41,7 @@ final class ExamPaperExportService {
     }
 
     private List<String> paperExportRow(Map<String, Object> row) {
-        boolean publishedRow = row.containsKey("sourceQuestionId") || row.containsKey("source_question_id") || row.containsKey("SOURCE_QUESTION_ID");
+        boolean publishedRow = value(row, "sourceQuestionId") != null;
         List<Map<String, Object>> options = publishedRow
                 ? examMapper.findPublishedOptions(longValue(value(row, "id")))
                 : examMapper.findDraftOptions(longValue(value(row, "id")));

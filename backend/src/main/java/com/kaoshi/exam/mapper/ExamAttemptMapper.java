@@ -12,17 +12,6 @@ import java.util.List;
 import java.util.Map;
 
 interface ExamAttemptMapper {
-    String ATTEMPT_NODE_FIELDS = """
-                   case when section_node.id is null then null else section_node.node_code end as sectionCode,
-                   case when section_node.id is null then null else section_node.title end as sectionTitle,
-                   case when section_node.id is null then 0 else section_node.sort_order end as sectionSortOrder,
-                   case when group_node.id is null then null else group_node.node_code end as groupCode,
-                   case when group_node.id is null then null else group_node.title end as groupTitle,
-                   case when group_node.id is null then null else group_node.direction end as groupDirection,
-                   case when group_node.id is null then null else group_node.material end as groupMaterial,
-                   case when group_node.id is null then 0 else group_node.sort_order end as groupSortOrder
-            """;
-
     @Select("""
             select *
             from exam_attempts
@@ -47,50 +36,14 @@ interface ExamAttemptMapper {
     @Select("select count(*) from exam_attempt_questions where attempt_id = #{attemptId}")
     int countAttemptQuestions(@Param("attemptId") Long attemptId);
 
-    @Select("select * from exam_published_nodes where id = #{publishedNodeId}")
-    Map<String, Object> findPublishedNode(@Param("publishedNodeId") Long publishedNodeId);
-
-    @Select("""
-            select *
-            from exam_attempt_nodes
-            where attempt_id = #{attemptId}
-              and source_node_id = #{sourceNodeId}
-            """)
-    Map<String, Object> findAttemptNodeBySource(@Param("attemptId") Long attemptId, @Param("sourceNodeId") Long sourceNodeId);
-
-    @Insert("""
-            insert into exam_attempt_nodes (attempt_id, source_node_id, parent_id, node_code, node_type, title, direction, material, sort_order)
-            values (#{attemptId}, #{sourceNodeId}, #{parentId}, #{nodeCode}, #{nodeType}, #{title}, #{direction}, #{material}, #{sortOrder})
-            """)
-    @Options(useGeneratedKeys = true, keyProperty = "id")
-    void insertAttemptNode(Map<String, Object> node);
-
-    @Insert("""
-            insert into exam_attempt_node_options (attempt_node_id, option_label, content, sort_order)
-            select #{attemptNodeId}, option_label, content, sort_order
-            from exam_published_node_options
-            where published_node_id = #{publishedNodeId}
-            order by sort_order, id
-            """)
-    void copyAttemptNodeOptions(@Param("attemptNodeId") Long attemptNodeId, @Param("publishedNodeId") Long publishedNodeId);
-
-    @Insert("""
-            insert into exam_attempt_node_attachments (attempt_node_id, file_name, file_url, media_type, sort_order)
-            select #{attemptNodeId}, file_name, file_url, media_type, sort_order
-            from exam_published_node_attachments
-            where published_node_id = #{publishedNodeId}
-            order by sort_order, id
-            """)
-    void copyAttemptNodeAttachments(@Param("attemptNodeId") Long attemptNodeId, @Param("publishedNodeId") Long publishedNodeId);
-
     @Insert("""
             insert into exam_attempt_questions (
-              attempt_id, attempt_node_id, published_question_id, source_question_id, type, stem,
-              item_label, item_stem, analysis, score, sort_order, display_order
+              attempt_id, published_question_id, source_question_id, type, stem,
+              analysis, score, sort_order, display_order
             )
             values (
-              #{attemptId}, #{attemptNodeId}, #{publishedQuestionId}, #{sourceQuestionId}, #{type}, #{stem},
-              #{itemLabel}, #{itemStem}, #{analysis}, #{score}, #{sortOrder}, #{displayOrder}
+              #{attemptId}, #{publishedQuestionId}, #{sourceQuestionId}, #{type}, #{stem},
+              #{analysis}, #{score}, #{sortOrder}, #{displayOrder}
             )
             """)
     @Options(useGeneratedKeys = true, keyProperty = "id")
@@ -125,13 +78,9 @@ interface ExamAttemptMapper {
 
     @Select("""
             select aq.*,
-            """ + ATTEMPT_NODE_FIELDS + """
-                   ,
                    ea.selected_labels as selectedLabels,
                    ea.answer_text as answerText
             from exam_attempt_questions aq
-            left join exam_attempt_nodes group_node on group_node.id = aq.attempt_node_id
-            left join exam_attempt_nodes section_node on section_node.id = group_node.parent_id
             left join exam_answers ea on ea.attempt_question_id = aq.id
             where aq.attempt_id = #{attemptId}
             order by aq.display_order, aq.id
@@ -142,12 +91,6 @@ interface ExamAttemptMapper {
             select id, option_label as label, content, sort_order as sortOrder
             from exam_attempt_options
             where attempt_question_id = #{attemptQuestionId}
-            union all
-            select ano.id, ano.option_label as label, ano.content, ano.sort_order as sortOrder
-            from exam_attempt_questions aq
-            join exam_attempt_node_options ano on ano.attempt_node_id = aq.attempt_node_id
-            where aq.id = #{attemptQuestionId}
-              and not exists (select 1 from exam_attempt_options ao where ao.attempt_question_id = aq.id)
             order by sortOrder, id
             """)
     List<Map<String, Object>> findAttemptOptions(@Param("attemptQuestionId") Long attemptQuestionId);
@@ -156,17 +99,6 @@ interface ExamAttemptMapper {
             select id, file_name as fileName, file_url as fileUrl, media_type as mediaType, sort_order as sortOrder
             from exam_attempt_attachments
             where attempt_question_id = #{attemptQuestionId}
-            union all
-            select ana.id, ana.file_name as fileName, ana.file_url as fileUrl, ana.media_type as mediaType, ana.sort_order as sortOrder
-            from exam_attempt_questions aq
-            join exam_attempt_node_attachments ana on ana.attempt_node_id = aq.attempt_node_id
-            where aq.id = #{attemptQuestionId}
-            union all
-            select sna.id, sna.file_name as fileName, sna.file_url as fileUrl, sna.media_type as mediaType, sna.sort_order as sortOrder
-            from exam_attempt_questions aq
-            join exam_attempt_nodes group_node on group_node.id = aq.attempt_node_id
-            join exam_attempt_node_attachments sna on sna.attempt_node_id = group_node.parent_id
-            where aq.id = #{attemptQuestionId}
             order by sortOrder, id
             """)
     List<Map<String, Object>> findAttemptAttachments(@Param("attemptQuestionId") Long attemptQuestionId);
@@ -238,5 +170,4 @@ interface ExamAttemptMapper {
             @Param("obtainedScore") BigDecimal obtainedScore,
             @Param("durationSeconds") int durationSeconds
     );
-
 }

@@ -67,8 +67,8 @@ const scoreTagType = computed(() => {
 })
 
 const questionTitle = computed(() => {
-  const label = props.question.itemLabel || String(props.index + 1)
-  const stem = props.question.itemStem || props.question.stem
+  const label = String(props.index + 1)
+  const stem = props.question.stem
   return stem ? `${label}. ${stem}` : label
 })
 </script>

@@ -19,6 +19,7 @@ public class Exam {
     private Integer durationMinutes;
     private Boolean timeLimit;
     private Integer attemptLimit;
+    private String examMode;
     private String displayMode;
     private String questionOrderMode;
     private String openType;
@@ -94,6 +95,14 @@ public class Exam {
 
     public void setAttemptLimit(Integer attemptLimit) {
         this.attemptLimit = attemptLimit;
+    }
+
+    public String getExamMode() {
+        return examMode;
+    }
+
+    public void setExamMode(String examMode) {
+        this.examMode = examMode;
     }
 
     public String getDisplayMode() {

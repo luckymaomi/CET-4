@@ -1,98 +1,124 @@
-# kaoshi 纯前端演示运行时计划
+# 答题卡试卷模式重建计划
 
 ## 需求
 
-- 构建一个 GitHub Pages 可托管的纯前端演示版。
-- 演示版和正式版必须使用同一套 Vue 页面、组件、路由、类型和视觉样式，不能维护两套页面。
-- 演示版默认不写 `localStorage`，刷新页面恢复初始演示数据。
-- 演示版不访问真实后端、MySQL 或 Redis，但要能体验当前现行有效核心能力：登录、管理端导航、用户/角色/部门、题库、考试、在线作答、提交、成绩和阅卷核心链路。
-- 正式版现有后端 API 行为、测试和构建不能被破坏。
+当前复杂题组结构不再作为产品主干。直接删除 section/group/shared options/选词填空/匹配/翻译专用题型等复杂表达，不做历史兼容，不做旧数据迁移。
+
+当前主干重建为：
+
+- 简单结构化题库：单选题、多选题、写作题。
+- 答题卡试卷模式：试卷材料在上方，答题卡配置在下方，考试端右侧为题号导航。
+- 初始化数据只保留简单单选/多选/写作示例和四级听力音频材料，不再导入复杂 CET4 题组 JSON。
 
 ## 当前事实
 
-- 当前前端 API 函数集中在 `frontend/src/api/auth.ts`、`admin.ts` 和 `exam-business.ts`，页面通过这些函数访问后端。
-- 当前 `apiClient` 使用 axios 请求 `/api/...`，请求拦截器从 `auth` store 读取 token。
-- 当前 `auth` store 直接读取和写入 `localStorage` 的 `kaoshi.accessToken` 与 `kaoshi.currentUser`。
-- 当前路由守卫只依赖 `auth` store 的 token、user 和 `loadCurrentUser()`。
-- 当前前端已有 CET4 本地音频资源 `frontend/public/local-assets/cet4/2023-03/set-1/2023-03-cet4-listening.mp3`。
-- 当前 `package.json` 只有正式 `build`，没有 demo 构建脚本。
-- 当前工作区在本计划创建前是干净的。
+- 后端复杂题组接口、实体、Mapper、JSON 题组 seed 已从当前主干删除。
+- 后端题型已收敛为 `SINGLE_CHOICE`、`MULTIPLE_CHOICE`、`WRITING`。
+- 数据库初始化脚本已重建为当前事实，新增 `exam_mode`、`exam_materials`、`exam_answer_card_items`。
+- 前端复杂题组编辑器、题组展示工具和旧复杂题型策略已删除。
+- 管理端考试编辑已能切换 `STRUCTURED` 和 `ANSWER_SHEET`，答题卡模式可维护试卷材料和答题卡条目。
+- 考试端答题卡模式已重建为上方试卷材料、下方答题卡作答区域、右侧题号导航。
+- 后端测试、前端类型检查、前端单测、前端构建、demo 构建、demo E2E、真实浏览器验收和根常规验证均已通过。
+- 当前 GitHub Pages demo 已支持 `/CET-4/` base，音频资源需要继续通过 app base 正确加载。
 
 ## 生产级验收保护点
 
-- 正式模式继续走真实 HTTP API，不改变接口契约。
-- demo 模式所有数据在内存中维护，不写 `localStorage`，不请求 `/api`。
-- 页面不分叉，不新增平行 demo 页面。
-- adapter 边界清楚：页面不判断 demo/real，业务 API 模块统一委派。
-- demo seed 是可维护的结构化数据，不把大量演示逻辑塞进页面。
-- demo 能跑真实浏览器验收，至少覆盖登录、题库查看、在线考试、提交、成绩查看和管理员阅卷。
-- 文件职责审查：超过 300 行必须确认职责是否单一；状态、规则、数据读写和渲染展示不能混在页面里。
+- 不保留旧复杂题组入口、旧题型入口、旧 JSON 题组导入入口。
+- 不留下前端不可达的复杂组件、后端不可用的复杂接口和测试旧断言。
+- 数据库初始化表达当前事实；清空数据库后可直接初始化。
+- 登录、题库、考试、作答、评分、成绩、demo 体验仍可走通。
+- 答题卡试卷模式必须用户可理解：试卷材料、答题卡配置、答案规则分开。
+- 考试发布和作答仍基于快照，不允许题库修改隐式影响已发布考试。
+- GitHub Pages 下本地音频仍可播放。
 
 ## 目标
 
-- 增加运行时模式判断：`real` 与 `demo`。
-- 增加 auth storage adapter：real 使用 `localStorage`，demo 使用内存 storage。
-- 增加 API runtime adapter：real 调 axios，demo 调内存服务。
-- 增加 demo seed 与内存数据库，覆盖 admin、张三、部门、角色、权限、题库、CET4 试题、考试、attempt、成绩。
-- 增加 demo 构建脚本和 GitHub Pages 部署配置。
-- 增加 demo Playwright 验收。
-- 同步 README/spec 中已经实现的 demo 事实。
+1. 删除复杂题组结构。
+2. 收敛题型为单选、多选、写作。
+3. 新增答题卡试卷模式的数据模型、管理端编辑入口和考试端呈现。
+4. 初始数据改成简单题库和四级听力音频样例；答题卡试卷由接口和浏览器链路覆盖。
+5. 同步后端测试、前端单测、demo E2E、README/spec。
 
 ## 不做范围
 
-- 不把真实后端搬到 GitHub Pages。
-- 不在 demo 默认使用 `localStorage`、IndexedDB 或远程存储。
-- 不做多租户、分享链接持久化或云端保存。
-- 不复制一套 demo 页面。
-- 不承诺 demo 导入导出能完整解析 Excel/zip；demo 中上传/下载只需提供可操作的演示反馈和轻量文件结果。
+- 不迁移旧复杂 CET4 题组数据。
+- 不兼容 `WORD_BANK`、`MATCHING`、`TRANSLATION` 旧题型。
+- 不做 PDF 解析服务；本轮只支持上传/引用 PDF、图片、音频等试卷材料。
+- 不做复杂版式批注、OCR、自动识别题号。
 
 ## 设计
 
-- 新增 `frontend/src/runtime/app-mode.ts`：集中读取 `VITE_APP_MODE`，默认 `real`。
-- 新增 `frontend/src/runtime/session-storage.ts`：封装 token 和 current user 读写；real 使用 `localStorage`，demo 使用模块级内存。
-- 新增 `frontend/src/api/adapters/`：
-  - `auth-adapter.ts`、`admin-adapter.ts`、`exam-business-adapter.ts` 定义接口。
-  - `real/` 复用 axios 调用。
-  - `demo/` 使用内存 store 实现同一接口。
-- 现有 `auth.ts`、`admin.ts`、`exam-business.ts` 保持导出函数名不变，只委派到当前 adapter。
-- demo 内存数据拆分：
-  - `demo-seed.ts` 只保存初始数据构造。
-  - `demo-store.ts` 只管理内存状态、ID 生成和快照克隆。
-  - `demo-auth.ts`、`demo-admin.ts`、`demo-exam-business.ts` 分别实现业务 API。
-  - `demo-scoring.ts` 负责作答评分和阅卷状态计算。
-- GitHub Pages 使用 GitHub Actions 构建 `frontend` 的 demo dist 并部署。
+### 简单题库
+
+题库试题只保留：
+
+- `SINGLE_CHOICE`
+- `MULTIPLE_CHOICE`
+- `WRITING`
+
+普通考试仍可从题库组卷。
+
+### 答题卡试卷模式
+
+考试新增或重建一个模式字段：
+
+- `STRUCTURED`：普通结构化题库组卷。
+- `ANSWER_SHEET`：答题卡试卷。
+
+答题卡试卷包含：
+
+- 试卷材料：标题、说明、附件列表。附件可为 PDF、图片、音频、文件链接。
+- 答题卡区域：题号、作答类型、选项范围、分值、排序。
+- 答案规则：客观题正确答案；写作题为人工阅卷。
+
+管理端考试编辑页结构：
+
+1. 基本信息。
+2. 试卷材料。
+3. 答题卡。
+4. 答案与分值。
+5. 发布预览。
+
+考试端结构：
+
+- 上方/主区域：试卷材料。
+- 下方：答题卡作答区域；选择题以题号加选项按钮呈现，写作题以题号加文本框呈现，不重复渲染题面。
+- 右侧：题号导航。
 
 ## 实施任务
 
-- [x] 创建运行模式和 session storage adapter。
-- [x] 抽出 real API adapter，保持正式 API 行为不变。
-- [x] 实现 demo 内存 seed、store 和核心业务 API。
-- [x] 接入现有 API 模块，确保页面无需感知 demo/real。
-- [x] 增加 demo build、preview 和 Playwright 配置/脚本。
-- [x] 增加 GitHub Pages workflow。
-- [x] 同步 README/spec 当前事实。
-- [x] 运行类型检查、单测、正式构建、demo 构建、正式浏览器验收和 demo 浏览器验收。
-- [x] 收口更新本计划状态和验证结果。
+- [x] 删除后端复杂题组接口、服务、Mapper、DTO、测试。
+- [x] 删除后端复杂题型 `WORD_BANK`、`MATCHING`、`TRANSLATION` 及评分分支。
+- [x] 重建数据库初始化脚本，移除 question node / node option / 复杂 seed。
+- [x] 新增答题卡试卷表结构或当前初始化结构。
+- [x] 新增答题卡试卷后端接口、请求、响应、发布快照、作答快照和评分规则。
+- [x] 删除前端题组结构编辑器、题组工具、复杂题型策略。
+- [x] 重建题库管理为简单题库。
+- [x] 重建考试管理，支持结构化试卷和答题卡试卷模式。
+- [x] 重建考试端答题卡试卷呈现与作答，明确上方材料、下方答题卡、右侧导航。
+- [x] 重建 demo seed。
+- [x] 同步 README、spec。
+- [x] 更新并运行后端、前端、浏览器验收。
 
 ## 验证计划
 
-- `cd frontend; npm.cmd run typecheck`
-- `cd frontend; npm.cmd run test:unit`
-- `cd frontend; npm.cmd run build`
-- `cd frontend; npm.cmd run build:demo`
 - `python .\start_test.py`
 - `python .\start_browser_test.py`
-- 新增 demo 浏览器验收脚本后运行对应命令。
+- `cd frontend; npm.cmd run build:demo`
+- `cd frontend; npm.cmd run test:e2e:demo`
+
+重点验收：
+
+- 管理员可以维护简单单选、多选、写作题。
+- 管理员可以创建答题卡试卷，上传/引用试卷材料，配置题号、选项、答案和分值。
+- 考生可以在答题卡试卷中查看材料、填写答题卡、提交。
+- 客观题自动评分，写作题人工阅卷。
+- GitHub Pages demo 中音频可播放。
 
 ## 收口
 
-- 已完成：同源前端 runtime adapter、demo 内存后端、demo session 内存存储、GitHub Pages 构建、demo 浏览器验收和正式模式回归。
-- 职责审查：`demo-store.ts` 与 `exam-business-demo-adapter.ts` 超过 300 行，触发审查；当前变化原因分别是“demo 内存状态/seed 构造”和“exam-business API 的 demo adapter 实现”，不包含页面渲染逻辑。后续如果 demo 业务继续扩展，应优先拆成 question-bank、exam、result 三个 demo service。
-- 验证通过：
-  - `cd frontend; npm.cmd run typecheck`
-  - `cd frontend; npm.cmd run build`
-  - `cd frontend; npm.cmd run build:demo`
-  - `cd frontend; npm.cmd run test:e2e:demo`
-  - `python .\start_test.py`
-  - `python .\start_browser_test.py`
-- 剩余风险：demo adapter 是内存模拟后端，文件导入/导出提供可操作演示和轻量文本/JSON结果，不等价于真实后端的 Excel/zip 完整解析。
+- 已删除复杂题组接口、实体、前端组件、旧 JSON 题组 seed、题库包导入导出和旧复杂题型入口。
+- 已建立简单题库、结构化试卷、答题卡试卷、试卷材料、答题卡条目、发布快照、作答快照和评分主干。
+- 已同步 README 和 spec 当前事实。
+- 已通过 `mvn.cmd test`、`npm.cmd run typecheck`、`npm.cmd run test:unit`、`npm.cmd run build:demo`、`npm.cmd run test:e2e:demo`、`python .\start_test.py`、`python .\start_browser_test.py`。
+- commit/push 前仍需 owner 明确确认。
